@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger("agentkit")
 
-AI_PROVIDER = os.getenv("AI_PROVIDER", "anthropic").lower()
 
 
 def cargar_config_prompts() -> dict:
@@ -100,12 +99,15 @@ async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
 
     system_prompt = cargar_system_prompt()
 
+    ai_provider = os.getenv("AI_PROVIDER", "anthropic").lower().strip()
+    logger.info(f"Usando proveedor de IA: '{ai_provider}'")
+
     try:
-        if AI_PROVIDER == "openai":
+        if ai_provider == "openai":
             return await _generar_con_openai(mensaje, historial, system_prompt)
         else:
             return await _generar_con_anthropic(mensaje, historial, system_prompt)
 
     except Exception as e:
-        logger.error(f"Error {AI_PROVIDER} API: {e}")
+        logger.error(f"Error {ai_provider} API: {e}")
         return obtener_mensaje_error()
