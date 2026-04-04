@@ -1,0 +1,24 @@
+# Configuración del negocio — Generado por AgentKit
+negocio:
+  nombre: "Next2Human"
+  descripcion: >
+    Next2Human es una empresa enfocada en desarrollar soluciones de inteligencia artificial,
+    automatización y analítica para negocios que buscan operar mejor, ahorrar tiempo y crecer
+    de forma más eficiente. Ayuda a convertir procesos, datos y conversaciones en soluciones
+    inteligentes que mejoran la productividad, la atención al cliente y la toma de decisiones.
+    Sus servicios incluyen agentes inteligentes para WhatsApp/web, automatización de procesos,
+    integración entre sistemas, inteligencia documental, dashboards, analítica y soluciones
+    digitales a la medida.
+  horario: "24/7 — siempre activo"
+
+agente:
+  nombre: "Next2Bot"
+  tono: "Amigable y casual con fondo profesional"
+  casos_de_uso:
+    - "Calificar y atender leads / ventas"
+    - "Responder preguntas frecuentes"
+    - "Agendar citas o demos"
+
+metadata:
+  creado: "2026-04-03"
+  version: "1.0"
