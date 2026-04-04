@@ -11,7 +11,7 @@ logger = logging.getLogger("agentkit")
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "America/Mexico_City"
-CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "")
+CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "").replace("%40", "@").strip()
 
 
 def _get_service():
