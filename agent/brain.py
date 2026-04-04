@@ -1,14 +1,46 @@
-# agent/brain.py — Cerebro del agente: OpenAI gpt-4o-mini
-# Generado por AgentKit
-
+# agent/brain.py — OpenAI gpt-4o-mini con function calling para calendario
 import os
+import json
 import yaml
 import logging
+from datetime import datetime
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
 logger = logging.getLogger("agentkit")
+
+OPENAI_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "agendar_cita",
+            "description": "Agenda una cita, llamada o demo en el calendario de Next2Human cuando el prospecto confirma querer reunirse y proporciona fecha y hora.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "titulo": {
+                        "type": "string",
+                        "description": "Título del evento, ej: 'Demo Next2Human - Empresa XYZ'"
+                    },
+                    "fecha": {
+                        "type": "string",
+                        "description": "Fecha en formato YYYY-MM-DD"
+                    },
+                    "hora": {
+                        "type": "string",
+                        "description": "Hora en formato HH:MM (24 horas)"
+                    },
+                    "descripcion": {
+                        "type": "string",
+                        "description": "Breve descripción del caso del prospecto"
+                    }
+                },
+                "required": ["titulo", "fecha", "hora"]
+            }
+        }
+    }
+]
 
 
 def cargar_config_prompts() -> dict:
@@ -16,34 +48,34 @@ def cargar_config_prompts() -> dict:
         with open("config/prompts.yaml", "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     except FileNotFoundError:
-        logger.error("config/prompts.yaml no encontrado")
         return {}
 
 
 def cargar_system_prompt() -> str:
     config = cargar_config_prompts()
-    return config.get("system_prompt", "Eres un asistente útil. Responde en español.")
+    hoy = datetime.now().strftime("%Y-%m-%d (%A)")
+    base = config.get("system_prompt", "Eres un asistente útil.")
+    return f"{base}\n\nFecha de hoy: {hoy}. Usa esta fecha como referencia para interpretar 'mañana', 'el lunes', etc."
 
 
 def obtener_mensaje_error() -> str:
-    config = cargar_config_prompts()
-    return config.get("error_message", "Lo siento, estoy teniendo problemas técnicos. Por favor intenta de nuevo en unos minutos.")
+    return cargar_config_prompts().get("error_message", "Lo siento, estoy teniendo problemas técnicos.")
 
 
 def obtener_mensaje_fallback() -> str:
-    config = cargar_config_prompts()
-    return config.get("fallback_message", "Disculpa, no entendí tu mensaje. ¿Podrías reformularlo?")
+    return cargar_config_prompts().get("fallback_message", "Disculpa, no entendí tu mensaje.")
 
 
-async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
+async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str = "") -> str:
     if not mensaje or len(mensaje.strip()) < 2:
         return obtener_mensaje_fallback()
 
-    system_prompt = cargar_system_prompt()
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    logger.info(f"OPENAI_API_KEY presente: {bool(api_key)} | primeros 10 chars: {api_key[:10] if api_key else 'VACIA'}")
+    logger.info(f"OPENAI_API_KEY presente: {bool(api_key)}")
 
     client = AsyncOpenAI(api_key=api_key)
+    system_prompt = cargar_system_prompt()
+
     mensajes = [{"role": "system", "content": system_prompt}]
     for msg in historial:
         mensajes.append({"role": msg["role"], "content": msg["content"]})
@@ -53,11 +85,51 @@ async def generar_respuesta(mensaje: str, historial: list[dict]) -> str:
         response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=mensajes,
+            tools=OPENAI_TOOLS,
+            tool_choice="auto",
             max_tokens=1024,
         )
-        respuesta = response.choices[0].message.content
-        logger.info(f"OpenAI OK — tokens: {response.usage.total_tokens}")
-        return respuesta
+
+        choice = response.choices[0]
+
+        # Si OpenAI quiere llamar a una función
+        if choice.finish_reason == "tool_calls":
+            tool_call = choice.message.tool_calls[0]
+            args = json.loads(tool_call.function.arguments)
+            logger.info(f"Function call: agendar_cita {args}")
+
+            # Ejecutar la herramienta
+            from agent.calendar_tool import crear_evento
+            link = crear_evento(
+                titulo=args.get("titulo", "Demo Next2Human"),
+                fecha=args["fecha"],
+                hora=args["hora"],
+                descripcion=args.get("descripcion", ""),
+                telefono=telefono,
+            )
+
+            # Resultado de la herramienta
+            if link.startswith("error"):
+                tool_result = "No se pudo crear el evento en el calendario. Pide al usuario que confirme los datos."
+            else:
+                tool_result = f"Evento creado exitosamente. Link: {link}"
+
+            # Segunda llamada a OpenAI con el resultado
+            mensajes.append(choice.message)
+            mensajes.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": tool_result,
+            })
+
+            response2 = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=mensajes,
+                max_tokens=512,
+            )
+            return response2.choices[0].message.content
+
+        return choice.message.content
 
     except Exception as e:
         logger.error(f"Error OpenAI: {e}")
