@@ -1,5 +1,6 @@
 # dashboard/router.py — All dashboard routes
 import os
+from pathlib import Path
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -12,7 +13,7 @@ from dashboard.auth import (
 )
 
 router = APIRouter(prefix="/dashboard")
-templates = Jinja2Templates(directory="dashboard/templates")
+templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
 STATUSES = ["new", "qualified", "follow_up", "demo_booked", "won", "lost"]
 STATUS_LABELS = {
@@ -37,7 +38,7 @@ def _check_auth(request: Request):
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = ""):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    return templates.TemplateResponse(request=request, name="login.html", context={"error": error})
 
 
 @router.post("/login")
@@ -84,8 +85,7 @@ async def leads_board(request: Request, status: str = "", search: str = ""):
         result = await session.execute(q)
         leads = result.scalars().all()
 
-    return templates.TemplateResponse("leads.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="leads.html", context={
         "leads": leads,
         "counts": counts,
         "statuses": STATUSES,
@@ -120,8 +120,7 @@ async def lead_detail(request: Request, phone: str):
         )
         events = events_result.scalars().all()
 
-    return templates.TemplateResponse("lead_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="lead_detail.html", context={
         "lead": lead,
         "messages": messages,
         "events": events,
@@ -246,8 +245,7 @@ async def monitor(request: Request):
             )
         )).scalar()
 
-    return templates.TemplateResponse("monitor.html", {
-        "request": request,
+    return templates.TemplateResponse(request=request, name="monitor.html", context={
         "chats_today": chats_today,
         "chats_week": chats_week,
         "chats_month": chats_month,
