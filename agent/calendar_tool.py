@@ -3,7 +3,7 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-import pytz
+from zoneinfo import ZoneInfo
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -42,8 +42,7 @@ def crear_evento(titulo: str, fecha: str, hora: str, descripcion: str = "", tele
         return "error_credenciales"
 
     try:
-        tz = pytz.timezone(TIMEZONE)
-        inicio = tz.localize(datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M"))
+        inicio = datetime.strptime(f"{fecha} {hora}", "%Y-%m-%d %H:%M").replace(tzinfo=ZoneInfo(TIMEZONE))
         fin = inicio + timedelta(minutes=duracion_min)
 
         evento = {
