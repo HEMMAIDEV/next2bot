@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Leads{% endblock %}
+{% block content %}
+
+<div class="mb-6">
+  <h2 class="text-xl font-bold text-white">Lead Board</h2>
+  <p class="text-gray-400 text-sm">All leads captured by Next2Bot</p>
+</div>
+
+<!-- Status tabs -->
+<div class="flex gap-2 mb-4 flex-wrap">
+  <a href="/dashboard/leads{% if search %}?search={{ search }}{% endif %}"
+     class="px-3 py-1 rounded-full text-xs font-semibold border {% if not active_status %}bg-white text-gray-900 border-white{% else %}border-gray-700 text-gray-400 hover:border-gray-500{% endif %}">
+    All ({{ counts.values()|sum }})
+  </a>
+  {% for s in statuses %}
+  <a href="/dashboard/leads?status={{ s }}{% if search %}&search={{ search }}{% endif %}"
+     class="px-3 py-1 rounded-full text-xs font-semibold border {% if active_status == s %}bg-white text-gray-900 border-white{% else %}border-gray-700 text-gray-400 hover:border-gray-500{% endif %}">
+    {{ status_labels[s] }} ({{ counts[s] }})
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Search -->
+<form method="GET" action="/dashboard/leads" class="mb-4">
+  {% if active_status %}<input type="hidden" name="status" value="{{ active_status }}">{% endif %}
+  <input name="search" value="{{ search }}" placeholder="Search phone, name, company..."
+    class="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-sm w-80 focus:outline-none focus:border-blue-500">
+  <button type="submit" class="ml-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm">Search</button>
+</form>
+
+<!-- Table -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-gray-800 text-gray-400 text-xs uppercase">
+      <tr>
+        <th class="px-4 py-3 text-left">Phone</th>
+        <th class="px-4 py-3 text-left">Name / Company</th>
+        <th class="px-4 py-3 text-left">Need</th>
+        <th class="px-4 py-3 text-left">Score</th>
+        <th class="px-4 py-3 text-left">Status</th>
+        <th class="px-4 py-3 text-left">Last Seen</th>
+        <th class="px-4 py-3 text-left"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-800">
+      {% for lead in leads %}
+      <tr class="hover:bg-gray-800/50 transition">
+        <td class="px-4 py-3 font-mono text-xs text-gray-300">{{ lead.phone }}</td>
+        <td class="px-4 py-3">
+          <div class="font-medium text-white">{{ lead.name or '—' }}</div>
+          <div class="text-xs text-gray-400">{{ lead.company or '' }}</div>
+        </td>
+        <td class="px-4 py-3 text-gray-300 max-w-xs truncate">{{ lead.business_need or '—' }}</td>
+        <td class="px-4 py-3">
+          <span class="font-bold {% if lead.score >= 75 %}text-emerald-400{% elif lead.score >= 50 %}text-yellow-400{% else %}text-gray-400{% endif %}">
+            {{ lead.score }}
+          </span>
+        </td>
+        <td class="px-4 py-3">
+          <span class="px-2 py-1 rounded-full text-xs font-semibold
+            {% if lead.status == 'new' %}bg-blue-900/50 text-blue-300
+            {% elif lead.status == 'qualified' %}bg-purple-900/50 text-purple-300
+            {% elif lead.status == 'follow_up' %}bg-yellow-900/50 text-yellow-300
+            {% elif lead.status == 'demo_booked' %}bg-green-900/50 text-green-300
+            {% elif lead.status == 'won' %}bg-emerald-900/50 text-emerald-300
+            {% else %}bg-red-900/50 text-red-300{% endif %}">
+            {{ status_labels[lead.status] }}
+          </span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-400">
+          {{ lead.last_seen_at.strftime('%b %d, %H:%M') if lead.last_seen_at else '—' }}
+        </td>
+        <td class="px-4 py-3">
+          <a href="/dashboard/leads/{{ lead.phone.replace('@', '-') }}"
+             class="text-blue-400 hover:text-blue-300 text-xs font-medium">View →</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7" class="px-4 py-8 text-center text-gray-500">No leads found.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
