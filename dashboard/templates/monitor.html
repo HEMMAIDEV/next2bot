@@ -2,11 +2,6 @@
 {% block title %}Monitor{% endblock %}
 {% block content %}
 
-<div class="mb-6">
-  <h2 class="text-xl font-bold text-white">System Monitor</h2>
-  <p class="text-gray-400 text-sm">Real-time usage, costs, and health</p>
-</div>
-
 <!-- Top stats -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
@@ -17,12 +12,12 @@
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
     <p class="text-xs text-gray-400 mb-1">Cost Today</p>
     <p class="text-3xl font-bold text-emerald-400">${{ cost_today }}</p>
-    <p class="text-xs text-gray-500 mt-1">${{ cost_week }} this week · ${{ cost_month }} this month</p>
+    <p class="text-xs text-gray-500 mt-1">${{ cost_week }} week · ${{ cost_month }} month</p>
   </div>
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
-    <p class="text-xs text-gray-400 mb-1">Leads</p>
-    <p class="text-3xl font-bold text-white">{{ total_leads }}</p>
-    <p class="text-xs text-gray-500 mt-1">{{ new_leads_today }} new today</p>
+    <p class="text-xs text-gray-400 mb-1">Tokens Today</p>
+    <p class="text-3xl font-bold text-purple-400">{{ "{:,}".format(tokens_in_today + tokens_out_today) }}</p>
+    <p class="text-xs text-gray-500 mt-1">{{ "{:,}".format(tokens_in_today) }} in · {{ "{:,}".format(tokens_out_today) }} out</p>
   </div>
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
     <p class="text-xs text-gray-400 mb-1">Errors Today</p>
@@ -31,44 +26,40 @@
   </div>
 </div>
 
-<!-- Token usage -->
-<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
-  <h3 class="font-semibold text-white mb-4">OpenAI Token Usage — Today</h3>
-  <div class="grid grid-cols-3 gap-4 text-center">
-    <div>
-      <p class="text-2xl font-bold text-blue-400">{{ "{:,}".format(tokens_in_today) }}</p>
-      <p class="text-xs text-gray-400 mt-1">Input tokens</p>
-    </div>
-    <div>
-      <p class="text-2xl font-bold text-purple-400">{{ "{:,}".format(tokens_out_today) }}</p>
-      <p class="text-xs text-gray-400 mt-1">Output tokens</p>
-    </div>
-    <div>
-      <p class="text-2xl font-bold text-emerald-400">{{ "{:,}".format(tokens_in_today + tokens_out_today) }}</p>
-      <p class="text-xs text-gray-400 mt-1">Total tokens</p>
-    </div>
+<!-- Charts row -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="font-semibold text-white mb-4">Chats by Hour — Today</h3>
+    <canvas id="hourlyChart" height="120"></canvas>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="font-semibold text-white mb-4">Cost by Day — Last 7 Days</h3>
+    <canvas id="dailyCostChart" height="120"></canvas>
   </div>
 </div>
 
-<!-- Service health -->
-<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
-  <h3 class="font-semibold text-white mb-4">Service Health</h3>
-  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-    {% set services = [
-      ("Next2Bot", "ok"),
-      ("OpenAI", "ok" if errors_today == 0 else "degraded"),
-      ("Whapi.cloud", "ok"),
-      ("Google Calendar", "ok"),
-    ] %}
-    {% for name, status in services %}
-    <div class="bg-gray-800 rounded-lg p-3 flex items-center gap-3">
-      <div class="w-2 h-2 rounded-full {% if status == 'ok' %}bg-emerald-400{% elif status == 'degraded' %}bg-yellow-400{% else %}bg-red-400{% endif %}"></div>
-      <div>
-        <p class="text-sm font-medium text-white">{{ name }}</p>
-        <p class="text-xs text-gray-400 capitalize">{{ status }}</p>
+<!-- Cost breakdown -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="font-semibold text-white mb-4">Cost Breakdown — This Month</h3>
+    <div class="space-y-3">
+      {% for item in cost_breakdown %}
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-gray-300">{{ item.provider }}</span>
+        <div class="flex items-center gap-3">
+          <div class="w-32 bg-gray-800 rounded-full h-2">
+            <div class="h-2 rounded-full bg-blue-500" style="width: {{ item.pct }}%"></div>
+          </div>
+          <span class="text-sm text-white font-medium w-16 text-right">${{ "%.4f"|format(item.cost) }}</span>
+        </div>
       </div>
+      {% endfor %}
     </div>
-    {% endfor %}
+  </div>
+
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="font-semibold text-white mb-4">Token Usage — This Month</h3>
+    <canvas id="tokenChart" height="120"></canvas>
   </div>
 </div>
 
@@ -78,10 +69,10 @@
   <h3 class="font-semibold text-white mb-4">Recent Errors</h3>
   <div class="space-y-2">
     {% for err in recent_errors %}
-    <div class="bg-red-950/30 border border-red-900/40 rounded-lg px-4 py-2 text-xs">
-      <span class="text-gray-500">{{ err.created_at.strftime('%b %d %H:%M') }}</span>
-      <span class="text-red-400 ml-2 font-medium">{{ err.provider }}</span>
-      <span class="text-gray-300 ml-2">{{ err.error_message or 'Unknown error' }}</span>
+    <div class="bg-red-950/30 border border-red-900/40 rounded-lg px-4 py-2 text-xs flex items-start gap-3">
+      <span class="text-gray-500 whitespace-nowrap">{{ err.created_at.strftime('%b %d %H:%M') }}</span>
+      <span class="text-red-400 font-medium">{{ err.provider }}</span>
+      <span class="text-gray-300">{{ err.error_message or 'Unknown error' }}</span>
     </div>
     {% endfor %}
   </div>
@@ -93,4 +84,47 @@
 </div>
 {% endif %}
 
+{% endblock %}
+{% block scripts %}
+<script>
+const hourly = {{ hourly_chart | tojson }};
+const daily  = {{ daily_chart  | tojson }};
+const tokens = {{ token_chart  | tojson }};
+
+new Chart(document.getElementById('hourlyChart'), {
+  type: 'bar',
+  data: {
+    labels: hourly.map(d => d.hour + ':00'),
+    datasets: [{ label: 'Chats', data: hourly.map(d => d.count),
+      backgroundColor: 'rgba(59,130,246,0.6)', borderRadius: 3 }]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+              y: { ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1f2937' }, beginAtZero: true } } }
+});
+
+new Chart(document.getElementById('dailyCostChart'), {
+  type: 'line',
+  data: {
+    labels: daily.map(d => d.label),
+    datasets: [{ label: 'Cost USD', data: daily.map(d => d.cost),
+      borderColor: 'rgba(16,185,129,1)', backgroundColor: 'rgba(16,185,129,0.1)',
+      fill: true, tension: 0.4, pointRadius: 4 }]
+  },
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+              y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' }, beginAtZero: true } } }
+});
+
+new Chart(document.getElementById('tokenChart'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Input tokens', 'Output tokens'],
+    datasets: [{ data: [tokens.input, tokens.output],
+      backgroundColor: ['rgba(59,130,246,0.8)', 'rgba(139,92,246,0.8)'],
+      borderWidth: 0 }]
+  },
+  options: { responsive: true, plugins: { legend: { labels: { color: '#9ca3af' } } } }
+});
+</script>
 {% endblock %}

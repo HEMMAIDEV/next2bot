@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Services{% endblock %}
+{% block content %}
+
+<div class="mb-2">
+  <p class="text-gray-400 text-sm">Live status of all connected integrations</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+  {% for svc in services %}
+  <div class="bg-gray-900 rounded-xl border {% if svc.status == 'ok' %}border-gray-800{% elif svc.status == 'degraded' %}border-yellow-800{% else %}border-red-900{% endif %} p-5">
+    <div class="flex items-start justify-between mb-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <div class="w-2.5 h-2.5 rounded-full
+            {% if svc.status == 'ok' %}bg-emerald-400{% elif svc.status == 'degraded' %}bg-yellow-400{% else %}bg-red-400{% endif %}">
+          </div>
+          <h3 class="font-semibold text-white">{{ svc.name }}</h3>
+        </div>
+        <p class="text-xs text-gray-500 mt-0.5">{{ svc.type }}</p>
+      </div>
+      <span class="text-xs px-2 py-1 rounded-full font-medium
+        {% if svc.status == 'ok' %}bg-emerald-900/40 text-emerald-400
+        {% elif svc.status == 'degraded' %}bg-yellow-900/40 text-yellow-400
+        {% else %}bg-red-900/40 text-red-400{% endif %}">
+        {{ svc.status | upper }}
+      </span>
+    </div>
+
+    <dl class="grid grid-cols-2 gap-3 text-sm">
+      {% for key, value in svc.metrics.items() %}
+      <div class="bg-gray-800/60 rounded-lg px-3 py-2">
+        <dt class="text-xs text-gray-500">{{ key }}</dt>
+        <dd class="text-white font-medium mt-0.5">{{ value }}</dd>
+      </div>
+      {% endfor %}
+    </dl>
+
+    {% if svc.note %}
+    <p class="text-xs text-gray-500 mt-3 border-t border-gray-800 pt-3">{{ svc.note }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+</div>
+{% endblock %}

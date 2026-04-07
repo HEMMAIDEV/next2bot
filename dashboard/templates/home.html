@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+
+<!-- Top KPIs -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+    <p class="text-xs text-gray-400 mb-1">Total Leads</p>
+    <p class="text-3xl font-bold text-white">{{ total_leads }}</p>
+    <p class="text-xs text-gray-500 mt-1">{{ new_today }} new today</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+    <p class="text-xs text-gray-400 mb-1">Chats Today</p>
+    <p class="text-3xl font-bold text-blue-400">{{ chats_today }}</p>
+    <p class="text-xs text-gray-500 mt-1">{{ chats_week }} this week</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+    <p class="text-xs text-gray-400 mb-1">Cost Today</p>
+    <p class="text-3xl font-bold text-emerald-400">${{ cost_today }}</p>
+    <p class="text-xs text-gray-500 mt-1">${{ cost_month }} this month</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+    <p class="text-xs text-gray-400 mb-1">System Health</p>
+    <p class="text-3xl font-bold {% if errors_today == 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
+      {% if errors_today == 0 %}OK{% else %}{{ errors_today }} err{% endif %}
+    </p>
+    <p class="text-xs text-gray-500 mt-1">{{ avg_latency_ms }}ms avg</p>
+  </div>
+</div>
+
+<!-- Funnel + Recent Leads -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+  <!-- Funnel -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="font-semibold text-white mb-4">Lead Funnel</h3>
+    <div class="space-y-3">
+      {% for status, label, color, count in funnel %}
+      <div>
+        <div class="flex justify-between text-xs mb-1">
+          <span class="text-gray-400">{{ label }}</span>
+          <span class="text-white font-medium">{{ count }}</span>
+        </div>
+        <div class="bg-gray-800 rounded-full h-2">
+          <div class="h-2 rounded-full {{ color }}" style="width: {{ (count / total_leads * 100) if total_leads > 0 else 0 }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <a href="/dashboard/leads" class="mt-4 block text-center text-xs text-blue-400 hover:text-blue-300">View all leads →</a>
+  </div>
+
+  <!-- Recent Leads -->
+  <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-semibold text-white">Recent Activity</h3>
+      <a href="/dashboard/leads" class="text-xs text-blue-400 hover:text-blue-300">View all →</a>
+    </div>
+    <div class="space-y-3">
+      {% for lead in recent_leads %}
+      <a href="/dashboard/leads/{{ lead.phone.replace('@', '-') }}" class="flex items-center justify-between hover:bg-gray-800/50 rounded-lg px-2 py-2 transition">
+        <div>
+          <p class="text-sm font-medium text-white">{{ lead.phone }}</p>
+          <p class="text-xs text-gray-400">{{ lead.business_need[:60] + '…' if lead.business_need and lead.business_need|length > 60 else lead.business_need or 'No info yet' }}</p>
+        </div>
+        <div class="text-right">
+          <span class="text-xs px-2 py-1 rounded-full
+            {% if lead.status == 'new' %}bg-blue-900/50 text-blue-300
+            {% elif lead.status == 'qualified' %}bg-purple-900/50 text-purple-300
+            {% elif lead.status == 'demo_booked' %}bg-green-900/50 text-green-300
+            {% elif lead.status == 'won' %}bg-emerald-900/50 text-emerald-300
+            {% else %}bg-gray-800 text-gray-400{% endif %}">
+            {{ lead.status }}
+          </span>
+          <p class="text-xs text-gray-500 mt-1">{{ lead.last_seen_at.strftime('%H:%M') if lead.last_seen_at else '' }}</p>
+        </div>
+      </a>
+      {% else %}
+      <p class="text-gray-500 text-sm">No leads yet. Send a WhatsApp message to Next2Bot to get started.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Usage chart -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+  <h3 class="font-semibold text-white mb-4">Chats — Last 7 Days</h3>
+  <canvas id="weekChart" height="80"></canvas>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+const weekData = {{ week_chart | tojson }};
+new Chart(document.getElementById('weekChart'), {
+  type: 'bar',
+  data: {
+    labels: weekData.map(d => d.label),
+    datasets: [{
+      label: 'Chats',
+      data: weekData.map(d => d.count),
+      backgroundColor: 'rgba(59,130,246,0.6)',
+      borderColor: 'rgba(59,130,246,1)',
+      borderWidth: 1,
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } },
+      y: { ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: '#1f2937' }, beginAtZero: true }
+    }
+  }
+});
+</script>
+{% endblock %}
