@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}{{ client.name }}{% endblock %}
+{% block heading %}{{ client.name }}{% endblock %}
+
+{% block content %}
+<div class="mb-4">
+  <a href="/dashboard/clients" class="text-xs text-gray-500 hover:text-gray-300">← Back to Clients</a>
+</div>
+
+<div class="grid grid-cols-3 gap-6">
+
+  <!-- LEFT: Client Info + Controls -->
+  <div class="col-span-1 space-y-4">
+
+    <!-- Bot Status Card -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-sm font-semibold text-gray-300">Bot Status</h3>
+        <span class="text-xs px-2 py-1 rounded-full font-semibold {{ 'bg-emerald-900/50 text-emerald-300' if client.bot_active else 'bg-red-900/50 text-red-300' }}">
+          {{ "ACTIVE" if client.bot_active else "INACTIVE" }}
+        </span>
+      </div>
+      <form method="POST" action="/dashboard/clients/{{ client.id }}/toggle">
+        <button type="submit" class="w-full py-2 rounded-lg text-sm font-medium transition
+          {{ 'bg-red-900/40 hover:bg-red-900/60 text-red-300 border border-red-800' if client.bot_active
+             else 'bg-emerald-900/40 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-800' }}">
+          {{ "🔴 Deactivate Bot" if client.bot_active else "🟢 Activate Bot" }}
+        </button>
+      </form>
+      {% if not client.bot_active %}
+      <p class="text-xs text-red-400 mt-2 text-center">Bot is OFF — client has no service</p>
+      {% endif %}
+    </div>
+
+    <!-- Payment Card -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-sm font-semibold text-gray-300 mb-3">Payment</h3>
+      <div class="space-y-2 text-sm mb-4">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Status</span>
+          <span class="font-semibold
+            {{ 'text-emerald-400' if client.payment_status == 'ok'
+               else ('text-yellow-400' if client.payment_status == 'pending' else 'text-red-400') }}">
+            {{ client.payment_status|upper }}
+          </span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Monthly</span>
+          <span class="text-white font-medium">${{ "%.0f"|format(client.monthly_price_mxn) }} MXN</span>
+        </div>
+        {% if days_until_payment is not none %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Due in</span>
+          <span class="{{ 'text-red-400' if days_until_payment < 0 else ('text-yellow-400' if days_until_payment <= 5 else 'text-gray-300') }}">
+            {% if days_until_payment < 0 %}{{ -days_until_payment }} days overdue
+            {% else %}{{ days_until_payment }} days{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% if client.last_payment_at %}
+        <div class="flex justify-between">
+          <span class="text-gray-500">Last paid</span>
+          <span class="text-gray-400 text-xs">{{ client.last_payment_at.strftime("%b %d, %Y") }}</span>
+        </div>
+        {% endif %}
+      </div>
+      <form method="POST" action="/dashboard/clients/{{ client.id }}/payment">
+        <button type="submit" class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition">
+          ✓ Mark as Paid
+        </button>
+      </form>
+    </div>
+
+    <!-- Info Card -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-sm font-semibold text-gray-300 mb-3">Details</h3>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between"><span class="text-gray-500">Plan</span><span class="text-white">{{ client.plan|title }}</span></div>
+        <div class="flex justify-between"><span class="text-gray-500">Niche</span><span class="text-gray-300">{{ client.niche or "—" }}</span></div>
+        {% if client.phone %}<div class="flex justify-between"><span class="text-gray-500">Phone</span><a href="https://wa.me/{{ client.phone|replace('+','') }}" target="_blank" class="text-blue-400 hover:underline">{{ client.phone }}</a></div>{% endif %}
+        {% if client.email %}<div class="flex justify-between"><span class="text-gray-500">Email</span><span class="text-gray-300 text-xs">{{ client.email }}</span></div>{% endif %}
+        {% if client.bot_phone_number %}<div class="flex justify-between"><span class="text-gray-500">Bot #</span><span class="text-gray-300">{{ client.bot_phone_number }}</span></div>{% endif %}
+        {% if client.deployment_url %}<div class="flex justify-between"><span class="text-gray-500">Deploy</span><a href="{{ client.deployment_url }}" target="_blank" class="text-blue-400 text-xs hover:underline">Railway ↗</a></div>{% endif %}
+        <div class="flex justify-between"><span class="text-gray-500">Since</span><span class="text-gray-400 text-xs">{{ client.created_at.strftime("%b %d, %Y") }}</span></div>
+      </div>
+      {% if client.notes %}
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <p class="text-xs text-gray-500 mb-1">Notes</p>
+        <p class="text-xs text-gray-400">{{ client.notes }}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- RIGHT: Usage + Edit -->
+  <div class="col-span-2 space-y-4">
+
+    <!-- Usage KPIs -->
+    <div class="grid grid-cols-3 gap-4">
+      <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+        <p class="text-xs text-gray-500 mb-1">Messages / mo</p>
+        <p class="text-2xl font-bold text-white">{{ msgs_month }}</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+        <p class="text-xs text-gray-500 mb-1">API Cost / mo</p>
+        <p class="text-2xl font-bold text-white">${{ cost_month }}</p>
+      </div>
+      <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+        <p class="text-xs text-gray-500 mb-1">Your Margin</p>
+        <p class="text-2xl font-bold text-emerald-400">
+          ${{ "%.0f"|format(client.monthly_price_mxn) }} MXN
+        </p>
+      </div>
+    </div>
+
+    <!-- Usage Chart -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-sm font-semibold text-gray-300 mb-4">Messages — Last 7 Days</h3>
+      <canvas id="usageChart" height="80"></canvas>
+    </div>
+
+    <!-- Edit Form -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-sm font-semibold text-gray-300 mb-4">Edit Client</h3>
+      <form method="POST" action="/dashboard/clients/{{ client.id }}/edit" class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Business Name *</label>
+          <input name="name" value="{{ client.name }}" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Owner Name</label>
+          <input name="owner_name" value="{{ client.owner_name or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">WhatsApp</label>
+          <input name="phone" value="{{ client.phone or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Email</label>
+          <input name="email" value="{{ client.email or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Niche</label>
+          <input name="niche" value="{{ client.niche or '' }}" placeholder="Belleza, Legal, Dental..." class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Plan</label>
+          <select name="plan" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            {% for p in plans %}<option value="{{ p }}" {{ 'selected' if client.plan == p }}>{{ p|title }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Monthly Price (MXN)</label>
+          <input name="monthly_price_mxn" type="number" step="0.01" value="{{ client.monthly_price_mxn }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Billing Day (1–28)</label>
+          <input name="billing_day" type="number" min="1" max="28" value="{{ client.billing_day }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Bot Phone Number</label>
+          <input name="bot_phone_number" value="{{ client.bot_phone_number or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div>
+          <label class="text-xs text-gray-500 block mb-1">Railway URL</label>
+          <input name="deployment_url" value="{{ client.deployment_url or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+        </div>
+        <div class="col-span-2">
+          <label class="text-xs text-gray-500 block mb-1">Notes</label>
+          <textarea name="notes" rows="2" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">{{ client.notes or '' }}</textarea>
+        </div>
+        <div class="col-span-2 flex justify-end">
+          <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg font-medium transition">Save Changes</button>
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chartData = {{ daily_chart | tojson }};
+new Chart(document.getElementById('usageChart'), {
+  type: 'bar',
+  data: {
+    labels: chartData.map(d => d.label),
+    datasets: [{
+      label: 'Messages',
+      data: chartData.map(d => d.count),
+      backgroundColor: 'rgba(59,130,246,0.5)',
+      borderColor: 'rgb(59,130,246)',
+      borderWidth: 1,
+      borderRadius: 4,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { color: '#9CA3AF' }, grid: { color: '#1F2937' } },
+      x: { ticks: { color: '#9CA3AF' }, grid: { display: false } }
+    }
+  }
+});
+</script>
+{% endblock %}

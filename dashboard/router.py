@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc, text
 from agent.database import async_session
-from agent.models import Lead, Message, UsageLog, FunnelEvent
+from agent.models import Lead, Message, UsageLog, FunnelEvent, Client, ServiceBilling, LearnedPattern
 from dashboard.auth import (
     create_session_token, check_credentials, get_current_user, COOKIE_NAME
 )
@@ -205,6 +205,14 @@ async def update_status(request: Request, phone: str, status: str = Form(...)):
     phone = phone.replace("-", "@")
     from agent.leads import update_lead_status
     await update_lead_status(phone, status, triggered_by="owner")
+    # Trigger pattern learning when a lead is won or demo_booked
+    if status in ("won", "demo_booked"):
+        try:
+            import asyncio
+            from agent.crm import extract_and_store_pattern
+            asyncio.create_task(extract_and_store_pattern(phone, status))
+        except Exception:
+            pass
     return RedirectResponse(url=f"/dashboard/leads/{phone.replace('@', '-')}", status_code=302)
 
 
@@ -478,3 +486,308 @@ async def services(request: Request):
         "active_page": "services",
         "services": services_data,
     })
+
+
+# ── CLIENTS CONTROL PANEL ─────────────────────────────────────────────────────
+
+PLANS = ["starter", "pro", "enterprise"]
+PAYMENT_STATUSES = {"ok": "bg-emerald-500", "pending": "bg-yellow-500", "overdue": "bg-red-500"}
+
+
+@router.get("/clients", response_class=HTMLResponse)
+async def clients_list(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    async with async_session() as session:
+        clients = (await session.execute(
+            select(Client).order_by(Client.created_at.desc())
+        )).scalars().all()
+
+        # Per-client usage this month
+        now = datetime.utcnow()
+        month_ago = now - timedelta(days=30)
+        usage_map = {}
+        for c in clients:
+            if c.bot_phone_number:
+                cost = float((await session.execute(
+                    select(func.sum(UsageLog.cost_usd))
+                    .where(UsageLog.phone == c.bot_phone_number, UsageLog.created_at >= month_ago)
+                )).scalar() or 0)
+                msgs = (await session.execute(
+                    select(func.count(UsageLog.id))
+                    .where(UsageLog.phone == c.bot_phone_number, UsageLog.created_at >= month_ago)
+                )).scalar() or 0
+                usage_map[c.id] = {"cost": round(cost, 4), "messages": msgs}
+            else:
+                usage_map[c.id] = {"cost": 0, "messages": 0}
+
+        active_count   = sum(1 for c in clients if c.bot_active)
+        overdue_count  = sum(1 for c in clients if c.payment_status == "overdue")
+        mrr = sum(c.monthly_price_mxn for c in clients if c.bot_active)
+
+    return templates.TemplateResponse(request=request, name="clients.html", context={
+        "active_page": "clients",
+        "clients": clients,
+        "usage_map": usage_map,
+        "plans": PLANS,
+        "payment_statuses": PAYMENT_STATUSES,
+        "active_count": active_count,
+        "overdue_count": overdue_count,
+        "mrr": mrr,
+    })
+
+
+@router.get("/clients/new", response_class=HTMLResponse)
+async def client_new_form(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+    return templates.TemplateResponse(request=request, name="client_form.html", context={
+        "active_page": "clients", "client": None, "plans": PLANS, "error": "",
+    })
+
+
+@router.post("/clients/new")
+async def client_create(
+    request: Request,
+    name: str = Form(...),
+    owner_name: str = Form(""),
+    phone: str = Form(""),
+    email: str = Form(""),
+    niche: str = Form(""),
+    plan: str = Form("starter"),
+    monthly_price_mxn: float = Form(0.0),
+    setup_price_mxn: float = Form(0.0),
+    billing_day: int = Form(1),
+    bot_phone_number: str = Form(""),
+    deployment_url: str = Form(""),
+    notes: str = Form(""),
+):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    from datetime import date
+    now = datetime.utcnow()
+    next_payment = now.replace(day=min(billing_day, 28)) + timedelta(days=30)
+
+    async with async_session() as session:
+        client = Client(
+            name=name, owner_name=owner_name or None, phone=phone or None,
+            email=email or None, niche=niche or None, plan=plan,
+            bot_active=True, monthly_price_mxn=monthly_price_mxn,
+            setup_price_mxn=setup_price_mxn, billing_day=billing_day,
+            next_payment_at=next_payment, payment_status="ok",
+            bot_phone_number=bot_phone_number or None,
+            deployment_url=deployment_url or None, notes=notes or None,
+            created_at=now, updated_at=now,
+        )
+        session.add(client)
+        await session.commit()
+
+    return RedirectResponse(url="/dashboard/clients", status_code=302)
+
+
+@router.get("/clients/{client_id}", response_class=HTMLResponse)
+async def client_detail(request: Request, client_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    async with async_session() as session:
+        client = (await session.execute(
+            select(Client).where(Client.id == client_id)
+        )).scalar_one_or_none()
+        if not client:
+            return HTMLResponse("Client not found", status_code=404)
+
+        now = datetime.utcnow()
+        month_ago = now - timedelta(days=30)
+
+        # Usage stats
+        cost_month = float((await session.execute(
+            select(func.sum(UsageLog.cost_usd))
+            .where(UsageLog.phone == client.bot_phone_number, UsageLog.created_at >= month_ago)
+        )).scalar() or 0) if client.bot_phone_number else 0
+
+        msgs_month = (await session.execute(
+            select(func.count(UsageLog.id))
+            .where(UsageLog.phone == client.bot_phone_number, UsageLog.created_at >= month_ago)
+        )).scalar() or 0 if client.bot_phone_number else 0
+
+        # Daily usage chart (7 days)
+        daily_chart = []
+        for i in range(6, -1, -1):
+            day = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day + timedelta(days=1)
+            cnt = 0
+            if client.bot_phone_number:
+                cnt = (await session.execute(
+                    select(func.count(UsageLog.id))
+                    .where(UsageLog.phone == client.bot_phone_number,
+                           UsageLog.created_at >= day, UsageLog.created_at < day_end)
+                )).scalar() or 0
+            daily_chart.append({"label": day.strftime("%a"), "count": cnt})
+
+    return templates.TemplateResponse(request=request, name="client_detail.html", context={
+        "active_page": "clients",
+        "client": client,
+        "cost_month": round(cost_month, 4),
+        "msgs_month": msgs_month,
+        "daily_chart": daily_chart,
+        "plans": PLANS,
+        "payment_statuses": PAYMENT_STATUSES,
+        "days_until_payment": (client.next_payment_at - now).days if client.next_payment_at else None,
+    })
+
+
+@router.post("/clients/{client_id}/toggle")
+async def client_toggle_bot(request: Request, client_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        client = (await session.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
+        if client:
+            client.bot_active = not client.bot_active
+            client.updated_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
+
+
+@router.post("/clients/{client_id}/payment")
+async def client_record_payment(request: Request, client_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        client = (await session.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
+        if client:
+            now = datetime.utcnow()
+            client.last_payment_at = now
+            client.next_payment_at = now.replace(day=min(client.billing_day, 28)) + timedelta(days=30)
+            client.payment_status = "ok"
+            client.updated_at = now
+            await session.commit()
+    return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
+
+
+@router.post("/clients/{client_id}/edit")
+async def client_edit(
+    request: Request, client_id: int,
+    name: str = Form(...), owner_name: str = Form(""), phone: str = Form(""),
+    email: str = Form(""), niche: str = Form(""), plan: str = Form("starter"),
+    monthly_price_mxn: float = Form(0.0), billing_day: int = Form(1),
+    bot_phone_number: str = Form(""), deployment_url: str = Form(""),
+    notes: str = Form(""),
+):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        client = (await session.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
+        if client:
+            client.name = name
+            client.owner_name = owner_name or None
+            client.phone = phone or None
+            client.email = email or None
+            client.niche = niche or None
+            client.plan = plan
+            client.monthly_price_mxn = monthly_price_mxn
+            client.billing_day = billing_day
+            client.bot_phone_number = bot_phone_number or None
+            client.deployment_url = deployment_url or None
+            client.notes = notes or None
+            client.updated_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
+
+
+# ── BILLING & PAYMENTS ────────────────────────────────────────────────────────
+
+@router.get("/billing", response_class=HTMLResponse)
+async def billing(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    now = datetime.utcnow()
+    month_ago = now - timedelta(days=30)
+
+    async with async_session() as session:
+        services = (await session.execute(
+            select(ServiceBilling).order_by(ServiceBilling.service_name)
+        )).scalars().all()
+
+        # My revenue from clients
+        clients = (await session.execute(select(Client))).scalars().all()
+        active_clients = [c for c in clients if c.bot_active]
+        mrr_mxn = sum(c.monthly_price_mxn for c in active_clients)
+        overdue_clients = [c for c in clients if c.payment_status == "overdue"]
+        pending_clients = [c for c in clients if c.payment_status == "pending"]
+
+        # My costs
+        openai_cost = float((await session.execute(
+            select(func.sum(UsageLog.cost_usd)).where(UsageLog.created_at >= month_ago)
+        )).scalar() or 0)
+
+        total_fixed_usd = sum(s.monthly_cost_usd for s in services if s.billing_cycle == "monthly")
+        total_cost_usd = total_fixed_usd + openai_cost
+
+        # Upcoming payments (next 30 days)
+        upcoming = []
+        for s in services:
+            if s.next_due_at:
+                delta = (s.next_due_at - now).days
+                if 0 <= delta <= 30:
+                    upcoming.append({
+                        "name": s.display_name,
+                        "due_in_days": delta,
+                        "amount_usd": s.monthly_cost_usd,
+                        "amount_mxn": s.monthly_cost_mxn,
+                        "auto_pay": s.auto_pay,
+                    })
+        upcoming.sort(key=lambda x: x["due_in_days"])
+
+        # Client payment calendar
+        client_payments = []
+        for c in clients:
+            if c.next_payment_at:
+                delta = (c.next_payment_at - now).days
+                client_payments.append({
+                    "name": c.name,
+                    "due_in_days": delta,
+                    "amount_mxn": c.monthly_price_mxn,
+                    "status": c.payment_status,
+                    "id": c.id,
+                })
+        client_payments.sort(key=lambda x: x["due_in_days"])
+
+        # Learned patterns count
+        patterns_count = (await session.execute(
+            select(func.count(LearnedPattern.id)).where(LearnedPattern.active == True)
+        )).scalar() or 0
+
+    return templates.TemplateResponse(request=request, name="billing.html", context={
+        "active_page": "billing",
+        "services": services,
+        "mrr_mxn": mrr_mxn,
+        "active_clients_count": len(active_clients),
+        "overdue_clients": overdue_clients,
+        "pending_clients": pending_clients,
+        "openai_cost_month": round(openai_cost, 4),
+        "total_fixed_usd": round(total_fixed_usd, 2),
+        "total_cost_usd": round(total_cost_usd, 4),
+        "upcoming_payments": upcoming,
+        "client_payments": client_payments,
+        "patterns_count": patterns_count,
+    })
+
+
+@router.post("/billing/{service_id}/paid")
+async def mark_service_paid(request: Request, service_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        svc = (await session.execute(select(ServiceBilling).where(ServiceBilling.id == service_id))).scalar_one_or_none()
+        if svc:
+            now = datetime.utcnow()
+            svc.last_paid_at = now
+            svc.next_due_at = now.replace(day=min(svc.billing_day, 28)) + timedelta(days=30)
+            svc.updated_at = now
+            await session.commit()
+    return RedirectResponse(url="/dashboard/billing", status_code=302)

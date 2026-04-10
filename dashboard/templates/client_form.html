@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}New Client{% endblock %}
+{% block heading %}Add New Client{% endblock %}
+
+{% block content %}
+<div class="mb-4"><a href="/dashboard/clients" class="text-xs text-gray-500 hover:text-gray-300">← Back to Clients</a></div>
+
+<div class="max-w-2xl">
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+    <h2 class="text-sm font-semibold text-gray-300 mb-5">Client Information</h2>
+    {% if error %}<div class="mb-4 p-3 bg-red-900/30 border border-red-800 rounded-lg text-red-300 text-sm">{{ error }}</div>{% endif %}
+    <form method="POST" action="/dashboard/clients/new" class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Business Name *</label>
+        <input name="name" required placeholder="Salón Glamour" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Owner Name</label>
+        <input name="owner_name" placeholder="María García" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">WhatsApp</label>
+        <input name="phone" placeholder="+52 81 1234 5678" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Email</label>
+        <input name="email" type="email" placeholder="cliente@email.com" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Niche</label>
+        <input name="niche" placeholder="Belleza, Legal, Dental..." class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Plan</label>
+        <select name="plan" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+          {% for p in plans %}<option value="{{ p }}">{{ p|title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Setup Price (MXN)</label>
+        <input name="setup_price_mxn" type="number" step="0.01" value="7500" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Monthly Price (MXN)</label>
+        <input name="monthly_price_mxn" type="number" step="0.01" value="1800" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Billing Day (1–28)</label>
+        <input name="billing_day" type="number" min="1" max="28" value="1" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div>
+        <label class="text-xs text-gray-500 block mb-1">Bot Phone Number</label>
+        <input name="bot_phone_number" placeholder="+52 81 0000 0000" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div class="col-span-2">
+        <label class="text-xs text-gray-500 block mb-1">Railway Deployment URL</label>
+        <input name="deployment_url" placeholder="https://next2bot-client.railway.app" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+      </div>
+      <div class="col-span-2">
+        <label class="text-xs text-gray-500 block mb-1">Notes</label>
+        <textarea name="notes" rows="2" placeholder="Anything relevant..." class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"></textarea>
+      </div>
+      <div class="col-span-2 flex gap-3 justify-end">
+        <a href="/dashboard/clients" class="px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</a>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg font-medium transition">Create Client</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

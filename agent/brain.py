@@ -107,12 +107,28 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
         stage = {"name": "ETAPA_1 — CONECTAR", "goal": "Conectar con el prospecto", "instruction": "Sé cálido y curioso."}
         score = 0
 
+    # Load learned patterns from successful past conversations
+    patterns_context = ""
+    try:
+        from agent.crm import get_active_patterns
+        patterns = await get_active_patterns(limit=3)
+        if patterns:
+            patterns_context = "\n\n## PATRONES QUE HAN FUNCIONADO (aprende de estos)\n"
+            for p in patterns:
+                patterns_context += f"\n**Tipo: {p['type']} | Resultado: {p['outcome']}**\n"
+                patterns_context += f"Qué funcionó: {p['summary']}\n"
+                if p.get("example"):
+                    patterns_context += f"Ejemplo real:\n{p['example']}\n"
+    except Exception as e:
+        logger.warning(f"Could not load learned patterns: {e}")
+
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     client = AsyncOpenAI(api_key=api_key)
 
-    # Build system prompt with injected funnel context
+    # Build system prompt with injected funnel context + learned patterns
     system_prompt = cargar_system_prompt()
     system_prompt += _build_funnel_context(stage, historial, score)
+    system_prompt += patterns_context
 
     mensajes = [{"role": "system", "content": system_prompt}]
     for msg in historial:
