@@ -995,7 +995,7 @@ async def forecast_page(request: Request):
 
 # ── AVAILABILITY / CALENDAR ───────────────────────────────────────────────────
 
-DAYS_DISPLAY = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DAYS_DISPLAY    = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 DAYS_ES_DISPLAY = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
 
@@ -1005,61 +1005,105 @@ async def availability_page(request: Request):
         return _redirect_login()
 
     from agent.availability import get_rules
-    from agent.calendar_tool import get_free_slots_for_week_sync
+    from agent.calendar_tool import build_week_grid
+    from agent.models import BlockedTime, BookedMeeting
     from datetime import date, timedelta
 
     rules = await get_rules()
 
-    # If no rules yet (first run before seed), show empty defaults
-    rule_map = {r.day_of_week: r for r in rules}
+    # Week navigation via ?week= offset (0 = current, 1 = next, -1 = previous)
+    try:
+        week_offset = int(request.query_params.get("week", 0))
+    except (ValueError, TypeError):
+        week_offset = 0
 
-    # Build this week (Mon → Sun)
     today      = date.today()
-    week_start = today - timedelta(days=today.weekday())   # Monday
-    week_slots = {}
-    try:
-        week_slots = get_free_slots_for_week_sync(week_start, rules)
-    except Exception:
-        pass  # Calendar unreachable — show schedule editor only
+    week_start = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
+    week_end   = week_start + timedelta(days=6)
 
-    # Build next week preview
-    next_week_start = week_start + timedelta(days=7)
-    next_week_slots = {}
-    try:
-        next_week_slots = get_free_slots_for_week_sync(next_week_start, rules)
-    except Exception:
-        pass
+    # Fetch blocked times and meetings for this week
+    week_start_str = week_start.isoformat()
+    week_end_str   = week_end.isoformat()
 
-    # Enrich with display metadata
-    weeks = []
-    for label, ws, slot_data in [
-        ("Esta semana", week_start, week_slots),
-        ("Próxima semana", next_week_start, next_week_slots),
-    ]:
-        days = []
-        for i in range(7):
-            d      = ws + timedelta(days=i)
-            rule   = rule_map.get(i)
-            slots  = slot_data.get(d.isoformat(), [])
-            days.append({
-                "date":      d,
-                "date_str":  d.isoformat(),
-                "label":     DAYS_ES_DISPLAY[i],
-                "is_today":  d == today,
-                "is_active": rule.is_active if rule else False,
-                "window":    f"{rule.start_time}–{rule.end_time}" if rule and rule.is_active else "—",
-                "slots":     slots,
-            })
-        weeks.append({"label": label, "days": days})
+    async with async_session() as session:
+        bt_result = await session.execute(
+            select(BlockedTime).where(
+                BlockedTime.blocked_date >= week_start_str,
+                BlockedTime.blocked_date <= week_end_str,
+            )
+        )
+        blocked_times = bt_result.scalars().all()
+
+        # Meetings: meeting_at stored UTC; filter by UTC range covering the week
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo
+        tz         = ZoneInfo("America/Mexico_City")
+        utc_start  = _dt(week_start.year, week_start.month, week_start.day, 0, 0, 0,
+                         tzinfo=ZoneInfo("UTC"))
+        utc_end    = _dt(week_end.year, week_end.month, week_end.day, 23, 59, 59,
+                         tzinfo=ZoneInfo("UTC"))
+        # naive UTC for DB comparison
+        utc_start_naive = utc_start.replace(tzinfo=None)
+        utc_end_naive   = utc_end.replace(tzinfo=None)
+
+        mtg_result = await session.execute(
+            select(BookedMeeting).where(
+                BookedMeeting.meeting_at >= utc_start_naive,
+                BookedMeeting.meeting_at <= utc_end_naive,
+            ).order_by(BookedMeeting.meeting_at)
+        )
+        meetings = mtg_result.scalars().all()
+
+        # Also fetch all blocked times for the blocked-times management panel
+        all_bt_result = await session.execute(
+            select(BlockedTime).order_by(BlockedTime.blocked_date, BlockedTime.start_time)
+        )
+        all_blocked = all_bt_result.scalars().all()
+
+        # Upcoming meetings (next 14 days) for sidebar
+        upcoming_cutoff = _dt.utcnow() + timedelta(days=14)
+        up_result = await session.execute(
+            select(BookedMeeting).where(
+                BookedMeeting.meeting_at >= _dt.utcnow().replace(tzinfo=None),
+                BookedMeeting.meeting_at <= upcoming_cutoff.replace(tzinfo=None),
+            ).order_by(BookedMeeting.meeting_at).limit(10)
+        )
+        upcoming_meetings = up_result.scalars().all()
+
+    # Build weekly grid
+    grid = build_week_grid(week_start, rules, blocked_times, meetings)
+
+    # Enrich upcoming meetings with local time
+    upcoming_enriched = []
+    for m in upcoming_meetings:
+        local_dt = m.meeting_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        upcoming_enriched.append({
+            "id":     m.id,
+            "title":  m.title,
+            "name":   m.client_name or "",
+            "niche":  m.client_niche or "",
+            "needs":  (m.client_needs or "")[:80],
+            "phone":  m.client_phone or "",
+            "date":   local_dt.strftime("%a %d/%m"),
+            "time":   local_dt.strftime("%H:%M"),
+            "link":   m.gcal_link or "",
+            "reminder_sent": m.reminder_sent,
+        })
 
     alert_badge = await _alert_badge()
     return templates.TemplateResponse(request=request, name="availability.html", context={
-        "active_page": "availability",
-        "rules":       rules,
-        "rule_map":    rule_map,
-        "weeks":       weeks,
-        "days_display": DAYS_ES_DISPLAY,
-        "alert_badge": alert_badge,
+        "active_page":       "availability",
+        "rules":             rules,
+        "rule_map":          {r.day_of_week: r for r in rules},
+        "grid":              grid,
+        "days_display":      DAYS_ES_DISPLAY,
+        "week_offset":       week_offset,
+        "week_start":        week_start,
+        "week_end":          week_end,
+        "today":             today,
+        "all_blocked":       all_blocked,
+        "upcoming_meetings": upcoming_enriched,
+        "alert_badge":       alert_badge,
     })
 
 
@@ -1073,20 +1117,18 @@ async def availability_save(request: Request):
     from agent.availability import upsert_rule
 
     for dow in range(7):
-        start    = form.get(f"start_{dow}", "09:00")
-        end      = form.get(f"end_{dow}", "18:00")
-        is_active = f"active_{dow}" in form   # checkbox
+        start     = form.get(f"start_{dow}", "09:00")
+        end       = form.get(f"end_{dow}", "18:00")
+        is_active = f"active_{dow}" in form
         await upsert_rule(dow, start, end, is_active)
 
-    return RedirectResponse(url="/dashboard/availability", status_code=302)
+    week_offset = form.get("week_offset", "0")
+    return RedirectResponse(url=f"/dashboard/availability?week={week_offset}", status_code=302)
 
 
 @router.get("/availability/slots", response_class=HTMLResponse)
 async def availability_slots_api(request: Request, fecha: str = ""):
-    """
-    HTMX partial — returns free slots for a specific date as HTML snippet.
-    Used for live slot preview in the dashboard.
-    """
+    """HTMX partial — free slots for a specific date."""
     if not _check_auth(request):
         return HTMLResponse("Unauthorized", status_code=401)
 
@@ -1097,7 +1139,7 @@ async def availability_slots_api(request: Request, fecha: str = ""):
     try:
         target = _date.fromisoformat(fecha) if fecha else _date.today()
     except ValueError:
-        return HTMLResponse("<p class='text-red-400 text-sm'>Invalid date</p>")
+        return HTMLResponse("<p class='text-red-400 text-sm'>Fecha inválida</p>")
 
     rules    = await get_rules()
     rule_map = {r.day_of_week: r for r in rules}
@@ -1109,9 +1151,69 @@ async def availability_slots_api(request: Request, fecha: str = ""):
         html = "<p class='text-gray-500 text-sm'>No hay horarios disponibles para esta fecha.</p>"
     else:
         items = "".join(
-            f"<span class='bg-emerald-900/40 text-emerald-300 text-sm px-3 py-1 rounded-full border border-emerald-800'>{s}</span>"
+            f"<span class='bg-emerald-900/40 text-emerald-300 text-sm px-3 py-1 rounded-full "
+            f"border border-emerald-800'>{s}</span>"
             for s in slots
         )
         html = f"<div class='flex flex-wrap gap-2'>{items}</div>"
 
     return HTMLResponse(html)
+
+
+# ── BLOCKED TIMES CRUD ────────────────────────────────────────────────────────
+
+@router.post("/availability/block")
+async def block_time_add(request: Request):
+    """Add a custom blocked time record."""
+    if not _check_auth(request):
+        return _redirect_login()
+
+    form      = await request.form()
+    title     = form.get("title", "Bloqueado").strip() or "Bloqueado"
+    date_str  = form.get("blocked_date", "")
+    all_day   = "all_day" in form
+    start_t   = form.get("start_time", "") or None
+    end_t     = form.get("end_time", "") or None
+
+    if not date_str:
+        return RedirectResponse(url="/dashboard/availability", status_code=302)
+
+    from agent.models import BlockedTime
+    from datetime import datetime as _dt
+
+    async with async_session() as session:
+        bt = BlockedTime(
+            title=title,
+            blocked_date=date_str,
+            all_day=all_day,
+            start_time=None if all_day else start_t,
+            end_time=None if all_day else end_t,
+            created_at=_dt.utcnow(),
+        )
+        session.add(bt)
+        await session.commit()
+
+    week_offset = form.get("week_offset", "0")
+    return RedirectResponse(url=f"/dashboard/availability?week={week_offset}", status_code=302)
+
+
+@router.post("/availability/block/{bt_id}/delete")
+async def block_time_delete(request: Request, bt_id: int):
+    """Delete a custom blocked time record."""
+    if not _check_auth(request):
+        return _redirect_login()
+
+    from agent.models import BlockedTime
+
+    async with async_session() as session:
+        bt = (await session.execute(
+            select(BlockedTime).where(BlockedTime.id == bt_id)
+        )).scalar_one_or_none()
+        if bt:
+            await session.delete(bt)
+            await session.commit()
+
+    # Return to same week
+    form        = await request.form()
+    week_offset = form.get("week_offset", "0")
+    return RedirectResponse(url=f"/dashboard/availability?week={week_offset}", status_code=302)

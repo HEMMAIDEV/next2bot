@@ -130,15 +130,44 @@ def compute_free_slots(
     return free_slots
 
 
+async def get_db_blocked_periods_for_date(target_date: date) -> list[tuple[time, time]]:
+    """Returns (start, end) time tuples from custom BlockedTime DB records for a date."""
+    from agent.models import BlockedTime
+    from agent.database import async_session
+    from sqlalchemy import select as sa_select
+
+    date_str = target_date.isoformat()
+    periods  = []
+    try:
+        async with async_session() as session:
+            result = await session.execute(
+                sa_select(BlockedTime).where(BlockedTime.blocked_date == date_str)
+            )
+            for bt in result.scalars().all():
+                if bt.all_day:
+                    periods.append((time(0, 0), time(23, 59)))
+                elif bt.start_time and bt.end_time:
+                    periods.append((
+                        _time_from_str(bt.start_time),
+                        _time_from_str(bt.end_time),
+                    ))
+    except Exception:
+        pass
+    return periods
+
+
 async def get_free_slots_for_date(
     target_date: date,
     booked_periods: list[tuple[time, time]],
     slot_minutes: int = 60,
 ) -> list[str]:
-    """Returns free slot strings for a specific date, given booked periods."""
-    rules = await get_rules()
-    rule  = next((r for r in rules if r.day_of_week == target_date.weekday()), None)
-    return compute_free_slots(rule, booked_periods, slot_minutes)
+    """Returns free slot strings for a specific date, given GCal booked periods.
+    Also subtracts custom blocked times from the DB."""
+    rules      = await get_rules()
+    rule       = next((r for r in rules if r.day_of_week == target_date.weekday()), None)
+    db_blocked = await get_db_blocked_periods_for_date(target_date)
+    all_blocked = booked_periods + db_blocked
+    return compute_free_slots(rule, all_blocked, slot_minutes)
 
 
 # ── BOT-FACING SUMMARY ────────────────────────────────────────────────────────
@@ -165,8 +194,9 @@ async def get_availability_summary_for_bot(
         if not rule or not rule.is_active:
             continue
 
-        booked = get_booked_periods_for_date(d)
-        free   = compute_free_slots(rule, booked, slot_minutes)
+        booked     = get_booked_periods_for_date(d)
+        db_blocked = await get_db_blocked_periods_for_date(d)
+        free       = compute_free_slots(rule, booked + db_blocked, slot_minutes)
         if not free:
             continue
 

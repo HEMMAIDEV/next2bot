@@ -235,9 +235,53 @@ class PartnerPayment(Base):
     __tablename__ = "partner_payments"
 
     id:          Mapped[int]         = mapped_column(Integer, primary_key=True, autoincrement=True)
-    client_id:   Mapped[int]         = mapped_column(Integer, index=True)   # FK to clients.id
+    client_id:   Mapped[int]         = mapped_column(Integer, index=True)
     partner_name: Mapped[str | None] = mapped_column(String(200))
     amount_mxn:  Mapped[float]       = mapped_column(Float, default=0.0)
     notes:       Mapped[str | None]  = mapped_column(Text)
     paid_at:     Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
     created_at:  Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── BLOCKED TIMES ─────────────────────────────────────────────────────────────
+
+class BlockedTime(Base):
+    """
+    Custom one-off blocks on specific dates — personal events, gatherings,
+    travel, etc. These layer on top of the weekly availability rules and
+    are shown on the dashboard calendar in orange.
+    """
+    __tablename__ = "blocked_times"
+
+    id:           Mapped[int]         = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title:        Mapped[str]         = mapped_column(String(200))           # "Reunión familiar", "Viaje", etc.
+    blocked_date: Mapped[str]         = mapped_column(String(10), index=True) # "YYYY-MM-DD"
+    all_day:      Mapped[bool]        = mapped_column(Boolean, default=False)
+    start_time:   Mapped[str | None]  = mapped_column(String(5))             # "15:00" — None if all_day
+    end_time:     Mapped[str | None]  = mapped_column(String(5))             # "17:00" — None if all_day
+    created_at:   Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── BOOKED MEETINGS ───────────────────────────────────────────────────────────
+
+class BookedMeeting(Base):
+    """
+    Local record of every meeting booked through Next2Bot.
+    Source of truth for the dashboard calendar display and reminder engine.
+    Mirrors the Google Calendar event but stores structured client data.
+    """
+    __tablename__ = "booked_meetings"
+
+    id:               Mapped[int]          = mapped_column(Integer, primary_key=True, autoincrement=True)
+    gcal_event_id:    Mapped[str | None]   = mapped_column(String(200), index=True)
+    gcal_link:        Mapped[str | None]   = mapped_column(String(500))
+    title:            Mapped[str]          = mapped_column(String(300))
+    client_phone:     Mapped[str | None]   = mapped_column(String(50), index=True)
+    client_name:      Mapped[str | None]   = mapped_column(String(200))   # Person/business name
+    client_niche:     Mapped[str | None]   = mapped_column(String(100))   # Belleza, Legal, etc.
+    client_needs:     Mapped[str | None]   = mapped_column(Text)          # Summary of what they need
+    meeting_at:       Mapped[datetime]     = mapped_column(DateTime, index=True)
+    ends_at:          Mapped[datetime]     = mapped_column(DateTime)
+    reminder_sent:    Mapped[bool]         = mapped_column(Boolean, default=False)
+    reminder_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    created_at:       Mapped[datetime]     = mapped_column(DateTime, default=datetime.utcnow)

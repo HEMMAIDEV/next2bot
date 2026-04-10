@@ -53,16 +53,25 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Cleanup loop failed to start: {e}")
         cleanup_task = None
 
+    # Start WhatsApp reminder loop (fires 1 hour before each meeting)
+    try:
+        from agent.reminders import run_reminder_loop
+        reminder_task = asyncio.create_task(run_reminder_loop())
+    except Exception as e:
+        logger.warning(f"Reminder loop failed to start: {e}")
+        reminder_task = None
+
     logger.info(f"Next2Bot running on port {PORT} | provider: {proveedor.__class__.__name__}")
     yield
 
     # Graceful shutdown
-    if cleanup_task:
-        cleanup_task.cancel()
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
-            pass
+    for task in (cleanup_task, reminder_task):
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(title="Next2Bot", version="2.0.0", lifespan=lifespan)

@@ -20,6 +20,8 @@ MIGRATIONS = [
     # Client table — usage limits
     ("ALTER TABLE clients ADD COLUMN plan_id INTEGER",
      "clients.plan_id"),
+    # Phase 8 — Calendar system (new tables created by create_all; only need column additions here)
+    # blocked_times and booked_meetings are new tables — handled by create_all automatically.
     ("ALTER TABLE clients ADD COLUMN msg_limit INTEGER",
      "clients.msg_limit"),
     ("ALTER TABLE clients ADD COLUMN cost_limit_usd REAL DEFAULT 0",

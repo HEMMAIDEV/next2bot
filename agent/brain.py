@@ -44,15 +44,19 @@ OPENAI_TOOLS = [
                 "Agenda una cita de 1 hora en el calendario de Horacio. "
                 "Úsala SOLO cuando el prospecto haya confirmado explícitamente una fecha y hora "
                 "de las opciones mostradas por verificar_disponibilidad. "
-                "Asegúrate de tener el contexto de la reunión para que Horacio vaya preparado."
+                "ANTES de llamar esta herramienta asegúrate de conocer: el nombre del cliente o negocio, "
+                "su industria/nicho, y un resumen de lo que quiere resolver — Horacio los necesita para llegar preparado."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "titulo":      {"type": "string", "description": "Título del evento — incluye el nombre del negocio si lo sabes"},
-                    "fecha":       {"type": "string", "description": "Fecha en formato YYYY-MM-DD"},
-                    "hora":        {"type": "string", "description": "Hora en formato HH:MM (24h)"},
-                    "descripcion": {"type": "string", "description": "Resumen del caso del prospecto: qué problema quiere resolver"},
+                    "titulo":          {"type": "string", "description": "Título del evento — incluye el nombre del negocio si lo sabes"},
+                    "fecha":           {"type": "string", "description": "Fecha en formato YYYY-MM-DD"},
+                    "hora":            {"type": "string", "description": "Hora en formato HH:MM (24h)"},
+                    "descripcion":     {"type": "string", "description": "Resumen del caso del prospecto: qué problema quiere resolver"},
+                    "nombre_cliente":  {"type": "string", "description": "Nombre de la persona o negocio (ej. 'Clínica Dental Pérez', 'Laura Gómez')"},
+                    "nicho":           {"type": "string", "description": "Industria del cliente (ej. Dental, Legal, Belleza, Médico, Restaurante, Retail, etc.)"},
+                    "necesidades":     {"type": "string", "description": "Resumen breve de lo que el cliente quiere resolver o mejorar con IA/automatización"},
                 },
                 "required": ["titulo", "fecha", "hora"],
             },
@@ -113,6 +117,16 @@ def _build_funnel_context(stage: dict, historial: list[dict], score: int) -> str
 
     if score >= 70:
         context += "- LEAD CALIENTE: Este prospecto tiene señales claras de interés. Propón la llamada en esta respuesta si no lo has hecho.\n"
+
+    context += (
+        "\n## INSTRUCCIONES PARA AGENDAR CITAS\n"
+        "Antes de llamar a agendar_cita SIEMPRE debes conocer:\n"
+        "  1. Nombre del cliente o negocio\n"
+        "  2. Industria / nicho (Dental, Legal, Belleza, Médico, etc.)\n"
+        "  3. Qué quiere resolver o mejorar\n"
+        "Si no tienes esta información, pregúntala de forma natural antes de confirmar la cita.\n"
+        "Horacio necesita llegar preparado a cada sesión.\n"
+    )
 
     return context
 
@@ -223,15 +237,21 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             # ── TOOL: agendar_cita ────────────────────────────────────────
             elif fn_name == "agendar_cita":
                 from agent.calendar_tool import crear_evento, check_slot_available
-                link = crear_evento(
+                result = crear_evento(
                     titulo=args.get("titulo", "Llamada de Diagnóstico — Next2Human"),
                     fecha=args["fecha"],
                     hora=args["hora"],
                     descripcion=args.get("descripcion", ""),
                     telefono=telefono,
+                    nombre_cliente=args.get("nombre_cliente", ""),
+                    nicho=args.get("nicho", ""),
+                    necesidades=args.get("necesidades", ""),
                 )
 
-                if not link.startswith("error"):
+                link  = result.get("link") or ""
+                error = result.get("error")
+
+                if not error:
                     # Post-booking sync confirmation
                     slot_now_taken = not check_slot_available(args["fecha"], args["hora"])
                     sync_status = (
@@ -239,19 +259,27 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                         if slot_now_taken else
                         "⚠️ El evento fue creado pero el calendario puede tardar unos segundos en sincronizar."
                     )
+                    nombre_str   = args.get("nombre_cliente", "")
+                    nicho_str    = args.get("nicho", "")
+                    needs_str    = args.get("necesidades", "")
+                    client_info  = ""
+                    if nombre_str: client_info += f" | Cliente: {nombre_str}"
+                    if nicho_str:  client_info += f" | Nicho: {nicho_str}"
+                    if needs_str:  client_info += f" | Necesidades: {needs_str}"
                     tool_result = (
                         f"Evento creado exitosamente.\n"
-                        f"Título: {args.get('titulo')} | Fecha: {args['fecha']} | Hora: {args['hora']}\n"
+                        f"Título: {args.get('titulo')} | Fecha: {args['fecha']} | Hora: {args['hora']}"
+                        f"{client_info}\n"
                         f"Link: {link}\n"
                         f"Sincronización: {sync_status}\n\n"
                         f"Instrucción: Confirma la cita con entusiasmo. Menciona la fecha y hora exactas. "
                         f"Dile que Horacio llegará preparado con ideas para su caso específico. "
-                        f"Cierra con energía positiva y ofrécete si necesita mover la cita."
+                        f"Cierra con energía positiva y ofrécete si necesitan mover la cita."
                     )
                 else:
                     tool_result = (
                         "No se pudo crear el evento automáticamente. "
-                        "Instrucción: Disculpate brevemente y dile que Horacio confirmará la cita "
+                        "Instrucción: Discúlpate brevemente y dile que Horacio confirmará la cita "
                         "directamente por WhatsApp en los próximos minutos."
                     )
 
