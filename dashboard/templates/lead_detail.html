@@ -13,21 +13,75 @@
 
     <!-- Contact Card -->
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <h3 class="font-semibold text-white mb-3">Contact Info</h3>
+      <h3 class="font-semibold text-white mb-3">Información de Contacto</h3>
       <dl class="space-y-2 text-sm">
-        <div><dt class="text-gray-400 text-xs">Phone</dt><dd class="text-white font-mono">{{ lead.phone }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Name</dt><dd class="text-white">{{ lead.name or '—' }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Company</dt><dd class="text-white">{{ lead.company or '—' }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Need</dt><dd class="text-white">{{ lead.business_need or '—' }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Score</dt>
-          <dd class="font-bold text-lg {% if lead.score >= 75 %}text-emerald-400{% elif lead.score >= 50 %}text-yellow-400{% else %}text-gray-400{% endif %}">
-            {{ lead.score }}/100
-          </dd>
-        </div>
-        <div><dt class="text-gray-400 text-xs">Source</dt><dd class="text-white">{{ lead.source }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Created</dt><dd class="text-white">{{ lead.created_at.strftime('%b %d, %Y %H:%M') }}</dd></div>
-        <div><dt class="text-gray-400 text-xs">Last seen</dt><dd class="text-white">{{ lead.last_seen_at.strftime('%b %d, %Y %H:%M') if lead.last_seen_at else '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Teléfono</dt><dd class="text-white font-mono">{{ lead.phone }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Nombre</dt><dd class="text-white">{{ lead.name or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Empresa</dt><dd class="text-white">{{ lead.company or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Necesidad</dt><dd class="text-white text-xs leading-relaxed">{{ lead.business_need or '—' }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Fuente</dt><dd class="text-white">{{ lead.source }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Creado</dt><dd class="text-white">{{ lead.created_at.strftime('%d %b %Y %H:%M') }}</dd></div>
+        <div><dt class="text-gray-400 text-xs">Última vez</dt><dd class="text-white">{{ lead.last_seen_at.strftime('%d %b %Y %H:%M') if lead.last_seen_at else '—' }}</dd></div>
       </dl>
+    </div>
+
+    <!-- Lead Quality Card -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="font-semibold text-white mb-4">Calidad del Lead</h3>
+
+      <!-- Category badge -->
+      <div class="flex items-center gap-3 mb-4">
+        <span class="text-2xl">{{ lead_cat.emoji }}</span>
+        <div>
+          <p class="font-bold text-white text-base leading-tight">{{ lead_cat.label }}</p>
+          <p class="text-xs text-gray-400 mt-0.5">{{ lead_cat.description }}</p>
+        </div>
+      </div>
+
+      <!-- Score bar -->
+      <div class="mb-4">
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+          <span>Score conversacional</span>
+          <span class="font-mono font-bold {{ lead_cat.color_text }}">{{ lead.score }}/100</span>
+        </div>
+        <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+          <div class="h-full rounded-full {{ lead_cat.color_dot }}"
+               style="width: {{ lead.score }}%; transition: width 0.5s ease;"></div>
+        </div>
+      </div>
+
+      <!-- Signal evidence -->
+      <div>
+        <p class="text-xs text-gray-500 uppercase tracking-wide mb-2">¿Por qué esta categoría?</p>
+        {% if signals_list %}
+        <ul class="space-y-2">
+          {% for sig in signals_list %}
+          <li class="flex items-start gap-2">
+            <span class="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0 {{ lead_cat.color_dot }}"></span>
+            <p class="text-xs text-gray-300 leading-snug">{{ sig }}</p>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-xs text-gray-600 italic">
+          Sin análisis conversacional aún — se actualizará automáticamente al próximo mensaje.
+        </p>
+        {% endif %}
+      </div>
+
+      <!-- All category reference -->
+      <div class="mt-5 pt-4 border-t border-gray-800">
+        <p class="text-xs text-gray-600 uppercase tracking-wide mb-2">Escala de categorías</p>
+        <div class="space-y-1.5">
+          {% for key, cat in lead_categories.items() %}
+          <div class="flex items-center gap-2 {% if key == lead_cat.key %}opacity-100{% else %}opacity-40{% endif %}">
+            <span class="text-sm">{{ cat.emoji }}</span>
+            <span class="text-xs {{ cat.color_text }} font-medium">{{ cat.label }}</span>
+            <span class="text-xs text-gray-600 truncate">— {{ cat.description }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
 
     <!-- Status Update -->

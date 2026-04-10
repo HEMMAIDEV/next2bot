@@ -39,6 +39,12 @@ MIGRATIONS = [
     ("ALTER TABLE clients ADD COLUMN partner_api_excluded BOOLEAN DEFAULT FALSE",
      "clients.partner_api_excluded"),
 
+    # Leads table — qualitative category + signal reasoning (Phase 9)
+    ("ALTER TABLE leads ADD COLUMN lead_category VARCHAR(50)",
+     "leads.lead_category"),
+    ("ALTER TABLE leads ADD COLUMN lead_signals TEXT",
+     "leads.lead_signals"),
+
     # ServiceBilling table — balance & alert thresholds
     ("ALTER TABLE service_billing ADD COLUMN alert_threshold_usd REAL DEFAULT 0",
      "service_billing.alert_threshold_usd"),

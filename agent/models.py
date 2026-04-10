@@ -26,6 +26,8 @@ class Lead(Base):
     business_need: Mapped[str | None]     = mapped_column(Text)
     status:        Mapped[str]            = mapped_column(String(50), default="new", index=True)
     score:         Mapped[int]            = mapped_column(Integer, default=0)
+    lead_category: Mapped[str | None]     = mapped_column(String(50))     # cold/warming/needs_attention/interested/hot
+    lead_signals:  Mapped[str | None]     = mapped_column(Text)           # JSON list of detected signal reasons
     source:        Mapped[str]            = mapped_column(String(50), default="whatsapp")
     notes:         Mapped[str | None]     = mapped_column(Text)
     ai_summary:    Mapped[str | None]     = mapped_column(Text)

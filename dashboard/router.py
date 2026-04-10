@@ -201,14 +201,35 @@ async def leads_board(request: Request, status: str = "", search: str = ""):
             )
         leads = (await session.execute(q)).scalars().all()
 
+    import json as _json
+    from agent.leads import LEAD_CATEGORIES, category_for_lead
+
+    def _parse_signals(raw: str) -> list:
+        try:
+            return _json.loads(raw) if raw else []
+        except Exception:
+            return []
+
+    # Attach category metadata + parsed signals to each lead for the template
+    leads_enriched = [
+        {
+            "lead":    l,
+            "cat":     category_for_lead(l),
+            "signals": _parse_signals(l.lead_signals),
+        }
+        for l in leads
+    ]
+
     return templates.TemplateResponse(request=request, name="leads.html", context={
-        "active_page": "leads",
-        "leads": leads,
-        "counts": counts,
-        "statuses": STATUSES,
-        "status_labels": STATUS_LABELS,
-        "active_status": status,
-        "search": search,
+        "active_page":      "leads",
+        "leads":            leads,
+        "leads_enriched":   leads_enriched,
+        "counts":           counts,
+        "statuses":         STATUSES,
+        "status_labels":    STATUS_LABELS,
+        "active_status":    status,
+        "search":           search,
+        "lead_categories":  LEAD_CATEGORIES,
     })
 
 
@@ -231,13 +252,24 @@ async def lead_detail(request: Request, phone: str):
             select(FunnelEvent).where(FunnelEvent.phone == phone).order_by(FunnelEvent.created_at)
         )).scalars().all()
 
+    import json as _json
+    from agent.leads import LEAD_CATEGORIES, category_for_lead
+    cat = category_for_lead(lead)
+    try:
+        signals_list = _json.loads(lead.lead_signals) if lead.lead_signals else []
+    except Exception:
+        signals_list = []
+
     return templates.TemplateResponse(request=request, name="lead_detail.html", context={
-        "active_page": "leads",
-        "lead": lead,
-        "messages": messages,
-        "events": events,
-        "statuses": STATUSES,
-        "status_labels": STATUS_LABELS,
+        "active_page":     "leads",
+        "lead":            lead,
+        "messages":        messages,
+        "events":          events,
+        "statuses":        STATUSES,
+        "status_labels":   STATUS_LABELS,
+        "lead_cat":        cat,
+        "signals_list":    signals_list,
+        "lead_categories": LEAD_CATEGORIES,
     })
 
 
