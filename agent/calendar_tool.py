@@ -258,6 +258,16 @@ def build_week_grid(
     rule_map   = {r.day_of_week: r for r in rules}
     DAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
+    # Compute grid hours dynamically from active rules so the grid grows/shrinks with the schedule
+    active_starts = [_parse_time(r.start_time).hour for r in rules if r and r.is_active]
+    active_ends   = [_parse_time(r.end_time).hour   for r in rules if r and r.is_active]
+    if active_starts and active_ends:
+        min_hour   = min(min(active_starts), 10)   # never start later than 10
+        max_hour   = max(max(active_ends), 21)     # end is exclusive: 21 → shows up to 20:xx
+    else:
+        min_hour, max_hour = 10, 21
+    grid_hours = list(range(min_hour, max_hour))
+
     # Index blocked times by date
     bt_map: dict[str, list] = {}
     for bt in blocked_times:
@@ -294,7 +304,7 @@ def build_week_grid(
         win_end   = _parse_time(rule.end_time)   if rule and rule.is_active else None
 
         cells = {}
-        for h in GRID_HOURS:
+        for h in grid_hours:
             t = time(h, 0)
             t_end = time(h + 1, 0) if h < 23 else time(23, 59)
 
@@ -326,7 +336,7 @@ def build_week_grid(
             "cells":    cells,
         })
 
-    return {"hours": GRID_HOURS, "days": days}
+    return {"hours": grid_hours, "days": days}
 
 
 def _parse_time(s: str) -> time:

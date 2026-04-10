@@ -42,10 +42,10 @@ OPENAI_TOOLS = [
             "name": "agendar_cita",
             "description": (
                 "Agenda una cita de 1 hora en el calendario de Horacio. "
-                "Úsala SOLO cuando el prospecto haya confirmado explícitamente una fecha y hora "
-                "de las opciones mostradas por verificar_disponibilidad. "
-                "ANTES de llamar esta herramienta asegúrate de conocer: el nombre del cliente o negocio, "
-                "su industria/nicho, y un resumen de lo que quiere resolver — Horacio los necesita para llegar preparado."
+                "Úsala cuando el prospecto confirme fecha y hora. "
+                "Agenda de inmediato — no bloquees el flujo pidiendo datos adicionales. "
+                "Si el nombre, nicho o necesidades ya surgieron en la conversación, inclúyelos; si no, omítelos. "
+                "Nunca pidas información que el prospecto no haya ofrecido por su cuenta."
             ),
             "parameters": {
                 "type": "object",
@@ -120,12 +120,10 @@ def _build_funnel_context(stage: dict, historial: list[dict], score: int) -> str
 
     context += (
         "\n## INSTRUCCIONES PARA AGENDAR CITAS\n"
-        "Antes de llamar a agendar_cita SIEMPRE debes conocer:\n"
-        "  1. Nombre del cliente o negocio\n"
-        "  2. Industria / nicho (Dental, Legal, Belleza, Médico, etc.)\n"
-        "  3. Qué quiere resolver o mejorar\n"
-        "Si no tienes esta información, pregúntala de forma natural antes de confirmar la cita.\n"
-        "Horacio necesita llegar preparado a cada sesión.\n"
+        "Cuando el prospecto confirme fecha y hora, llama a agendar_cita DE INMEDIATO.\n"
+        "NO pidas nombre, nicho ni necesidades si el prospecto no los mencionó — eso es suficiente.\n"
+        "Si esa información ya apareció naturalmente en la conversación, pásala; si no, omítela.\n"
+        "Prioridad: agendar rápido > recopilar datos perfectos.\n"
     )
 
     return context

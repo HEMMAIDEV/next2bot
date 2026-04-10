@@ -17,6 +17,38 @@ from dashboard.auth import (
 router = APIRouter(prefix="/dashboard")
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 
+
+# ── GCal sync helpers ─────────────────────────────────────────────────────────
+
+class _GCalMeeting:
+    """Lightweight stand-in for BookedMeeting — wraps a raw GCal event dict
+    so it can be passed straight into build_week_grid() without a DB record."""
+    __slots__ = (
+        "meeting_at", "ends_at", "title",
+        "client_name", "client_niche", "client_needs",
+        "client_phone", "gcal_link", "reminder_sent",
+    )
+    def __init__(self, meeting_at, ends_at, title, client_name="",
+                 client_niche="", client_needs="", client_phone="",
+                 gcal_link="", reminder_sent=False):
+        self.meeting_at    = meeting_at
+        self.ends_at       = ends_at
+        self.title         = title
+        self.client_name   = client_name
+        self.client_niche  = client_niche
+        self.client_needs  = client_needs
+        self.client_phone  = client_phone
+        self.gcal_link     = gcal_link
+        self.reminder_sent = reminder_sent
+
+
+def _parse_gcal_desc(description: str, field: str) -> str:
+    """Extract 'Field: value' lines from a structured GCal event description."""
+    for line in (description or "").splitlines():
+        if line.startswith(f"{field}:"):
+            return line[len(field) + 1:].strip()
+    return ""
+
 STATUSES = ["new", "qualified", "follow_up", "demo_booked", "won", "lost"]
 STATUS_LABELS = {
     "new": "New", "qualified": "Qualified", "follow_up": "Follow-up",
@@ -1070,8 +1102,38 @@ async def availability_page(request: Request):
         )
         upcoming_meetings = up_result.scalars().all()
 
+    # Merge live GCal events that aren't already in the local BookedMeeting table.
+    # This catches events booked directly in Google Calendar (not via the bot).
+    from agent.calendar_tool import get_events_for_date as _gcal_events
+    from zoneinfo import ZoneInfo as _ZI
+    _UTC_TZ = _ZI("UTC")
+
+    known_gcal_ids = {m.gcal_event_id for m in meetings if getattr(m, "gcal_event_id", None)}
+    gcal_synthetic: list = []
+    for _i in range(7):
+        _d = week_start + timedelta(days=_i)
+        try:
+            for ev in _gcal_events(_d):
+                if ev.get("event_id") in known_gcal_ids:
+                    continue  # already in DB — skip to avoid duplicates
+                _desc = ev.get("description", "")
+                gcal_synthetic.append(_GCalMeeting(
+                    meeting_at   = ev["start"].astimezone(_UTC_TZ).replace(tzinfo=None),
+                    ends_at      = ev["end"].astimezone(_UTC_TZ).replace(tzinfo=None),
+                    title        = ev["title"],
+                    gcal_link    = ev.get("link", ""),
+                    client_name  = _parse_gcal_desc(_desc, "Nombre"),
+                    client_niche = _parse_gcal_desc(_desc, "Nicho"),
+                    client_needs = _parse_gcal_desc(_desc, "Necesidades"),
+                    client_phone = _parse_gcal_desc(_desc, "Cliente WhatsApp"),
+                ))
+        except Exception:
+            pass  # GCal unreachable — show DB records only
+
+    all_meetings = list(meetings) + gcal_synthetic
+
     # Build weekly grid
-    grid = build_week_grid(week_start, rules, blocked_times, meetings)
+    grid = build_week_grid(week_start, rules, blocked_times, all_meetings)
 
     # Enrich upcoming meetings with local time
     upcoming_enriched = []

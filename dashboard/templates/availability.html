@@ -157,9 +157,9 @@
           <h3 class="text-sm font-semibold text-white">⏰ Horario Semanal</h3>
           <p class="text-xs text-gray-500 mt-0.5">Edita tus horas disponibles</p>
         </div>
-        <span id="schedule-chev" class="text-gray-500 text-xs ml-2">▼</span>
+        <span id="schedule-chev" class="text-gray-500 text-xs ml-2">▶</span>
       </button>
-      <div id="schedule-body">
+      <div id="schedule-body" class="hidden">
         <form method="POST" action="/dashboard/availability" class="p-3 space-y-1.5">
           <input type="hidden" name="week_offset" value="{{ week_offset }}">
 
@@ -228,9 +228,9 @@
           <h3 class="text-sm font-semibold text-white">🚫 Bloquear Tiempo</h3>
           <p class="text-xs text-gray-500 mt-0.5">Compromisos personales, viajes…</p>
         </div>
-        <span id="block-chev" class="text-gray-500 text-xs ml-2">▼</span>
+        <span id="block-chev" class="text-gray-500 text-xs ml-2">▶</span>
       </button>
-      <div id="block-body">
+      <div id="block-body" class="hidden">
         <form method="POST" action="/dashboard/availability/block" class="p-3 space-y-2">
           <input type="hidden" name="week_offset" value="{{ week_offset }}">
 
