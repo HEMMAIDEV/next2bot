@@ -34,7 +34,7 @@ async def purge_inactive_leads() -> int:
         result = await session.execute(
             select(Lead).where(
                 (Lead.last_seen_at < cutoff) |
-                (Lead.last_seen_at == None, Lead.created_at < cutoff)
+                ((Lead.last_seen_at == None) & (Lead.created_at < cutoff))
             )
         )
         stale_leads = result.scalars().all()
