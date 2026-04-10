@@ -58,6 +58,7 @@ def crear_evento(titulo: str, fecha: str, hora: str, descripcion: str = "", tele
         resultado = service.events().insert(calendarId=CALENDAR_ID, body=evento).execute()
         link = resultado.get("htmlLink", "")
         logger.info(f"Evento creado: {titulo} el {fecha} a las {hora}")
+        # Return structured string so brain.py can build an exciting confirmation
         return link
 
     except Exception as e:
