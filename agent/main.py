@@ -13,6 +13,7 @@ from agent.providers import obtener_proveedor
 from agent.providers.messenger import ProveedorMessenger
 from agent.providers.instagram import ProveedorInstagram
 from agent.leads import upsert_lead, score_lead
+from agent.dedup import is_duplicate
 
 load_dotenv()
 
@@ -103,6 +104,11 @@ async def webhook_handler(request: Request):
             if msg.es_propio or not msg.texto:
                 continue
 
+            # ── Deduplication ── Whapi fires the same webhook from multiple
+            # IPs/retries; skip any message_id we already processed recently.
+            if is_duplicate(msg.mensaje_id):
+                continue
+
             logger.info(f"Message from {msg.telefono}: {msg.texto[:60]}")
 
             await upsert_lead(msg.telefono)
@@ -140,6 +146,8 @@ async def _process_messages(mensajes, proveedor_instance):
     """Shared logic: process messages from any channel."""
     for msg in mensajes:
         if msg.es_propio or not msg.texto:
+            continue
+        if is_duplicate(msg.mensaje_id):
             continue
         logger.info(f"Message from {msg.telefono}: {msg.texto[:60]}")
         await upsert_lead(msg.telefono)
