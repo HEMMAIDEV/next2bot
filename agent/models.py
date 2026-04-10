@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import String, Text, Integer, Boolean, Numeric, DateTime, ForeignKey, Float
 from sqlalchemy.orm import Mapped, mapped_column
 from agent.database import Base
+from typing import Optional
 
 
 class Message(Base):
@@ -82,25 +83,35 @@ class Client(Base):
     """
     __tablename__ = "clients"
 
-    id:                  Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name:                Mapped[str]           = mapped_column(String(200), index=True)          # Business name
-    owner_name:          Mapped[str | None]    = mapped_column(String(200))                       # Owner/contact name
-    phone:               Mapped[str | None]    = mapped_column(String(50))                        # Owner WhatsApp
-    email:               Mapped[str | None]    = mapped_column(String(200))
-    niche:               Mapped[str | None]    = mapped_column(String(100))                       # e.g. "Belleza", "Legal"
-    plan:                Mapped[str]           = mapped_column(String(50), default="starter")     # starter | pro | enterprise
-    bot_active:          Mapped[bool]          = mapped_column(Boolean, default=True)             # Master on/off switch
-    monthly_price_mxn:   Mapped[float]         = mapped_column(Float, default=0.0)
-    setup_price_mxn:     Mapped[float]         = mapped_column(Float, default=0.0)
-    billing_day:         Mapped[int]           = mapped_column(Integer, default=1)                # Day of month payment is due
-    last_payment_at:     Mapped[datetime|None] = mapped_column(DateTime)
-    next_payment_at:     Mapped[datetime|None] = mapped_column(DateTime)
-    payment_status:      Mapped[str]           = mapped_column(String(30), default="pending")     # ok | pending | overdue
-    bot_phone_number:    Mapped[str | None]    = mapped_column(String(50))                        # The bot's WA number
-    deployment_url:      Mapped[str | None]    = mapped_column(String(500))                       # Railway/other URL
-    notes:               Mapped[str | None]    = mapped_column(Text)
-    created_at:          Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at:          Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id:                      Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name:                    Mapped[str]           = mapped_column(String(200), index=True)
+    owner_name:              Mapped[str | None]    = mapped_column(String(200))
+    phone:                   Mapped[str | None]    = mapped_column(String(50))
+    email:                   Mapped[str | None]    = mapped_column(String(200))
+    niche:                   Mapped[str | None]    = mapped_column(String(100))
+    plan:                    Mapped[str]           = mapped_column(String(50), default="starter")
+    bot_active:              Mapped[bool]          = mapped_column(Boolean, default=True)
+    monthly_price_mxn:       Mapped[float]         = mapped_column(Float, default=0.0)
+    setup_price_mxn:         Mapped[float]         = mapped_column(Float, default=0.0)
+    billing_day:             Mapped[int]           = mapped_column(Integer, default=1)
+    last_payment_at:         Mapped[datetime|None] = mapped_column(DateTime)
+    next_payment_at:         Mapped[datetime|None] = mapped_column(DateTime)
+    payment_status:          Mapped[str]           = mapped_column(String(30), default="pending")
+    bot_phone_number:        Mapped[str | None]    = mapped_column(String(50))
+    deployment_url:          Mapped[str | None]    = mapped_column(String(500))
+    notes:                   Mapped[str | None]    = mapped_column(Text)
+    # Phase 7 — usage limits
+    plan_id:                 Mapped[int | None]    = mapped_column(Integer)                        # FK to plans.id (soft ref)
+    msg_limit:               Mapped[int | None]    = mapped_column(Integer)                        # Monthly message cap
+    cost_limit_usd:          Mapped[float]         = mapped_column(Float, default=0.0)             # Monthly cost cap USD
+    alert_threshold_pct:     Mapped[int]           = mapped_column(Integer, default=80)            # Alert at X% of limit
+    # Phase 7 — partner bot support
+    is_partner_bot:          Mapped[bool]          = mapped_column(Boolean, default=False)         # Managed by a partner?
+    partner_name:            Mapped[str | None]    = mapped_column(String(200))                    # Partner person/company
+    partner_monthly_cost_mxn: Mapped[float]        = mapped_column(Float, default=0.0)             # What we pay partner
+    partner_api_excluded:    Mapped[bool]          = mapped_column(Boolean, default=False)         # Exclude from N2H API tracking?
+    created_at:              Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at:              Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ── PATTERN LEARNING ─────────────────────────────────────────────────────────
@@ -134,17 +145,80 @@ class ServiceBilling(Base):
     """
     __tablename__ = "service_billing"
 
-    id:               Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    service_name:     Mapped[str]           = mapped_column(String(100), index=True)   # openai | whapi | railway | domain | etc.
-    display_name:     Mapped[str]           = mapped_column(String(100))
-    plan_name:        Mapped[str | None]    = mapped_column(String(100))               # e.g. "Pro", "Hobby"
-    monthly_cost_usd: Mapped[float]         = mapped_column(Float, default=0.0)
-    monthly_cost_mxn: Mapped[float]         = mapped_column(Float, default=0.0)
-    billing_day:      Mapped[int]           = mapped_column(Integer, default=1)        # Day of month
-    billing_cycle:    Mapped[str]           = mapped_column(String(20), default="monthly")  # monthly | annual | usage
-    last_paid_at:     Mapped[datetime|None] = mapped_column(DateTime)
-    next_due_at:      Mapped[datetime|None] = mapped_column(DateTime)
-    auto_pay:         Mapped[bool]          = mapped_column(Boolean, default=False)
-    notes:            Mapped[str | None]    = mapped_column(Text)
-    created_at:       Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at:       Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id:                          Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
+    service_name:                Mapped[str]           = mapped_column(String(100), index=True)
+    display_name:                Mapped[str]           = mapped_column(String(100))
+    plan_name:                   Mapped[str | None]    = mapped_column(String(100))
+    monthly_cost_usd:            Mapped[float]         = mapped_column(Float, default=0.0)
+    monthly_cost_mxn:            Mapped[float]         = mapped_column(Float, default=0.0)
+    billing_day:                 Mapped[int]           = mapped_column(Integer, default=1)
+    billing_cycle:               Mapped[str]           = mapped_column(String(20), default="monthly")
+    last_paid_at:                Mapped[datetime|None] = mapped_column(DateTime)
+    next_due_at:                 Mapped[datetime|None] = mapped_column(DateTime)
+    auto_pay:                    Mapped[bool]          = mapped_column(Boolean, default=False)
+    notes:                       Mapped[str | None]    = mapped_column(Text)
+    # Phase 7 — balance & alert tracking
+    balance_usd:                 Mapped[float | None]  = mapped_column(Float)                      # Manually entered current balance
+    balance_alert_threshold_usd: Mapped[float]         = mapped_column(Float, default=5.0)         # Alert when below this
+    alert_threshold_usd:         Mapped[float]         = mapped_column(Float, default=0.0)         # Alert if monthly cost exceeds this
+    created_at:                  Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at:                  Mapped[datetime]      = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── SUBSCRIPTION PLANS ────────────────────────────────────────────────────────
+
+class Plan(Base):
+    """
+    Predefined subscription tiers that can be assigned to clients.
+    Sets message limits, cost limits, and suggested pricing.
+    """
+    __tablename__ = "plans"
+
+    id:               Mapped[int]         = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name:             Mapped[str]         = mapped_column(String(50), unique=True)          # starter | pro | enterprise
+    display_name:     Mapped[str]         = mapped_column(String(100))
+    msg_limit:        Mapped[int | None]  = mapped_column(Integer)                          # Monthly message cap (None = unlimited)
+    cost_limit_usd:   Mapped[float]       = mapped_column(Float, default=0.0)               # Monthly cost cap USD (0 = unlimited)
+    price_mxn:        Mapped[float]       = mapped_column(Float, default=0.0)               # Suggested monthly price
+    description:      Mapped[str | None]  = mapped_column(Text)
+    active:           Mapped[bool]        = mapped_column(Boolean, default=True)
+    created_at:       Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── ALERTS ────────────────────────────────────────────────────────────────────
+
+class Alert(Base):
+    """
+    System-generated alerts for the dashboard owner.
+    Types: usage_warning, usage_exceeded, payment_missed, api_balance_low, partner_payment_due
+    """
+    __tablename__ = "alerts"
+
+    id:         Mapped[int]         = mapped_column(Integer, primary_key=True, autoincrement=True)
+    alert_type: Mapped[str]         = mapped_column(String(50), index=True)   # usage_warning | usage_exceeded | payment_missed | ...
+    ref_id:     Mapped[str]         = mapped_column(String(100), index=True)   # e.g. "client_3_msg" — for dedup
+    title:      Mapped[str]         = mapped_column(String(200))
+    body:       Mapped[str]         = mapped_column(Text)
+    severity:   Mapped[str]         = mapped_column(String(20), default="info")  # info | warning | error
+    read:       Mapped[bool]        = mapped_column(Boolean, default=False)
+    dismissed:  Mapped[bool]        = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
+    read_at:    Mapped[datetime | None] = mapped_column(DateTime)
+
+
+# ── PARTNER PAYMENTS ─────────────────────────────────────────────────────────
+
+class PartnerPayment(Base):
+    """
+    Tracks payments made to partners for partner-managed client bots.
+    Keeps a clean history separate from our own revenue.
+    """
+    __tablename__ = "partner_payments"
+
+    id:          Mapped[int]         = mapped_column(Integer, primary_key=True, autoincrement=True)
+    client_id:   Mapped[int]         = mapped_column(Integer, index=True)   # FK to clients.id
+    partner_name: Mapped[str | None] = mapped_column(String(200))
+    amount_mxn:  Mapped[float]       = mapped_column(Float, default=0.0)
+    notes:       Mapped[str | None]  = mapped_column(Text)
+    paid_at:     Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)
+    created_at:  Mapped[datetime]    = mapped_column(DateTime, default=datetime.utcnow)

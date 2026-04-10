@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block heading %}Alert Center{% endblock %}
+
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div class="flex gap-3">
+    <form method="POST" action="/dashboard/alerts/run">
+      <button type="submit" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition">
+        ⚡ Run Alerts Now
+      </button>
+    </form>
+    <form method="POST" action="/dashboard/alerts/read-all">
+      <button type="submit" class="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition">
+        ✓ Mark All Read
+      </button>
+    </form>
+  </div>
+  <p class="text-xs text-gray-600">Alerts run automatically every 24 hours</p>
+</div>
+
+{% if not alerts %}
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-12 text-center">
+  <p class="text-4xl mb-3">✅</p>
+  <p class="text-gray-300 font-medium">No active alerts</p>
+  <p class="text-gray-600 text-sm mt-1">All clients and services are within normal limits</p>
+</div>
+{% else %}
+
+<div class="space-y-3">
+  {% for alert in alerts %}
+  <div class="bg-gray-900 rounded-xl border {% if alert.severity == 'error' %}border-red-800/60{% elif alert.severity == 'warning' %}border-yellow-800/60{% else %}border-gray-800{% endif %} p-4 flex items-start justify-between gap-4 {% if not alert.read %}ring-1 {% if alert.severity == 'error' %}ring-red-900/40{% elif alert.severity == 'warning' %}ring-yellow-900/40{% else %}ring-blue-900/40{% endif %}{% endif %}">
+
+    <div class="flex items-start gap-3 flex-1">
+      <!-- Severity dot -->
+      <div class="mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0
+        {% if alert.severity == 'error' %}bg-red-500
+        {% elif alert.severity == 'warning' %}bg-yellow-400
+        {% else %}bg-blue-400{% endif %}">
+      </div>
+
+      <div class="flex-1">
+        <div class="flex items-center gap-2 mb-1">
+          <p class="text-sm font-semibold text-white">{{ alert.title }}</p>
+          {% if not alert.read %}
+          <span class="text-xs px-1.5 py-0.5 bg-blue-900/50 text-blue-400 rounded font-medium">NEW</span>
+          {% endif %}
+        </div>
+        <p class="text-sm text-gray-400">{{ alert.body }}</p>
+        <p class="text-xs text-gray-600 mt-1.5">
+          {{ alert.alert_type.replace('_', ' ')|title }} ·
+          {{ alert.created_at.strftime("%b %d, %Y %H:%M") }} UTC
+        </p>
+      </div>
+    </div>
+
+    <div class="flex gap-2 flex-shrink-0">
+      {% if not alert.read %}
+      <form method="POST" action="/dashboard/alerts/{{ alert.id }}/read">
+        <button type="submit" class="text-xs text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition">Mark Read</button>
+      </form>
+      {% endif %}
+      <form method="POST" action="/dashboard/alerts/{{ alert.id }}/dismiss">
+        <button type="submit" class="text-xs text-gray-600 hover:text-red-400 bg-gray-800 hover:bg-gray-900 px-3 py-1.5 rounded-lg transition">Dismiss</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

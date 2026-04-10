@@ -30,6 +30,17 @@
       {% if not client.bot_active %}
       <p class="text-xs text-red-400 mt-2 text-center">Bot is OFF — client has no service</p>
       {% endif %}
+      {% if client.is_partner_bot %}
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <span class="text-xs text-purple-400 font-medium">🤝 Partner Bot</span>
+        {% if client.partner_name %}
+        <span class="text-xs text-gray-600 ml-1">· {{ client.partner_name }}</span>
+        {% endif %}
+        {% if client.partner_api_excluded %}
+        <p class="text-xs text-gray-600 mt-1">API usage excluded from N2H totals</p>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <!-- Payment Card -->
@@ -90,6 +101,73 @@
       </div>
       {% endif %}
     </div>
+
+    <!-- Partner Section (shown only for partner bots) -->
+    {% if client.is_partner_bot %}
+    <div class="bg-purple-900/10 rounded-xl border border-purple-800/40 p-5">
+      <h3 class="text-sm font-semibold text-purple-300 mb-3">🤝 Partner Details</h3>
+      <div class="space-y-2 text-sm mb-4">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Partner</span>
+          <span class="text-white">{{ client.partner_name or "—" }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Monthly Cost</span>
+          <span class="text-purple-300 font-medium">${{ "%.0f"|format(client.partner_monthly_cost_mxn or 0) }} MXN</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">API Excluded</span>
+          <span class="{{ 'text-emerald-400' if client.partner_api_excluded else 'text-gray-500' }}">
+            {{ "Yes" if client.partner_api_excluded else "No" }}
+          </span>
+        </div>
+        {% if client.monthly_price_mxn and client.partner_monthly_cost_mxn %}
+        <div class="flex justify-between border-t border-purple-800/30 pt-2 mt-2">
+          <span class="text-gray-500">N2H Take</span>
+          <span class="text-emerald-400 font-medium">
+            ${{ "%.0f"|format(client.monthly_price_mxn - (client.partner_monthly_cost_mxn or 0)) }} MXN
+          </span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Record partner payment -->
+      <details class="mt-2">
+        <summary class="text-xs text-purple-400 cursor-pointer hover:text-purple-300 font-medium">+ Record Partner Payment</summary>
+        <form method="POST" action="/dashboard/clients/{{ client.id }}/partner-payment" class="mt-3 space-y-2">
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Amount (MXN)</label>
+            <input name="amount_mxn" type="number" step="0.01" value="{{ client.partner_monthly_cost_mxn or 0 }}"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Notes (optional)</label>
+            <input name="notes" placeholder="e.g. Transfer via SPEI"
+              class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+          </div>
+          <button type="submit" class="w-full py-2 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition">
+            💸 Record Payment
+          </button>
+        </form>
+      </details>
+
+      <!-- Partner payment history -->
+      {% if partner_payments %}
+      <div class="mt-4 pt-3 border-t border-purple-800/30">
+        <p class="text-xs text-gray-500 mb-2">Recent payments to {{ client.partner_name or "partner" }}</p>
+        <div class="space-y-1.5">
+          {% for pp in partner_payments[:5] %}
+          <div class="flex justify-between text-xs">
+            <span class="text-gray-500">{{ pp.paid_at.strftime("%b %d, %Y") }}</span>
+            <span class="text-purple-300 font-medium">${{ "%.0f"|format(pp.amount_mxn) }} MXN</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
   </div>
 
   <!-- RIGHT: Usage + Edit -->
@@ -100,16 +178,46 @@
       <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
         <p class="text-xs text-gray-500 mb-1">Messages / mo</p>
         <p class="text-2xl font-bold text-white">{{ msgs_month }}</p>
+        {% if client.msg_limit %}
+        <div class="mt-2">
+          <div class="flex justify-between text-xs text-gray-600 mb-1">
+            <span>Limit: {{ client.msg_limit }}</span>
+            <span>{{ msg_pct }}%</span>
+          </div>
+          <div class="w-full bg-gray-800 rounded-full h-1.5">
+            <div class="h-1.5 rounded-full {{ 'bg-red-500' if msg_pct >= 100 else ('bg-yellow-400' if msg_pct >= (client.alert_threshold_pct or 80) else 'bg-blue-500') }}"
+              style="width: {{ msg_pct }}%"></div>
+          </div>
+        </div>
+        {% endif %}
       </div>
       <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
         <p class="text-xs text-gray-500 mb-1">API Cost / mo</p>
         <p class="text-2xl font-bold text-white">${{ cost_month }}</p>
+        <p class="text-xs text-gray-600 mt-1">USD · OpenAI usage</p>
+        {% if client.cost_limit_usd %}
+        <div class="mt-2">
+          <div class="flex justify-between text-xs text-gray-600 mb-1">
+            <span>Limit: ${{ "%.2f"|format(client.cost_limit_usd) }}</span>
+            <span>{{ cost_pct }}%</span>
+          </div>
+          <div class="w-full bg-gray-800 rounded-full h-1.5">
+            <div class="h-1.5 rounded-full {{ 'bg-red-500' if cost_pct >= 100 else ('bg-yellow-400' if cost_pct >= (client.alert_threshold_pct or 80) else 'bg-emerald-500') }}"
+              style="width: {{ cost_pct }}%"></div>
+          </div>
+        </div>
+        {% endif %}
       </div>
       <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
-        <p class="text-xs text-gray-500 mb-1">Your Margin</p>
+        <p class="text-xs text-gray-500 mb-1">Your Revenue</p>
         <p class="text-2xl font-bold text-emerald-400">
-          ${{ "%.0f"|format(client.monthly_price_mxn) }} MXN
+          ${{ "%.0f"|format(client.monthly_price_mxn) }} <span class="text-sm font-normal text-gray-500">MXN</span>
         </p>
+        {% if client.is_partner_bot and client.partner_monthly_cost_mxn %}
+        <p class="text-xs text-purple-400 mt-1">
+          Net: ${{ "%.0f"|format(client.monthly_price_mxn - (client.partner_monthly_cost_mxn or 0)) }} after partner
+        </p>
+        {% endif %}
       </div>
     </div>
 
@@ -123,6 +231,8 @@
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
       <h3 class="text-sm font-semibold text-gray-300 mb-4">Edit Client</h3>
       <form method="POST" action="/dashboard/clients/{{ client.id }}/edit" class="grid grid-cols-2 gap-4">
+
+        <!-- Basic info -->
         <div>
           <label class="text-xs text-gray-500 block mb-1">Business Name *</label>
           <input name="name" value="{{ client.name }}" required class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
@@ -165,6 +275,58 @@
           <label class="text-xs text-gray-500 block mb-1">Railway URL</label>
           <input name="deployment_url" value="{{ client.deployment_url or '' }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
         </div>
+
+        <!-- Usage limits -->
+        <div class="col-span-2 pt-2 border-t border-gray-800">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Usage Limits & Alerts</p>
+          <div class="grid grid-cols-3 gap-4">
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Msg Limit / mo (0 = unlimited)</label>
+              <input name="msg_limit" type="number" min="0" value="{{ client.msg_limit or 0 }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Cost Limit USD / mo (0 = unlimited)</label>
+              <input name="cost_limit_usd" type="number" step="0.01" min="0" value="{{ client.cost_limit_usd or 0 }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Alert at % of limit</label>
+              <input name="alert_threshold_pct" type="number" min="50" max="100" value="{{ client.alert_threshold_pct or 80 }}" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Partner bot section -->
+        <div class="col-span-2 pt-2 border-t border-gray-800">
+          <p class="text-xs text-gray-500 uppercase tracking-wider font-medium mb-3">Partner Bot Settings</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="col-span-2 flex items-center gap-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input name="is_partner_bot" type="checkbox" value="1" {{ 'checked' if client.is_partner_bot }}
+                  class="w-4 h-4 rounded border-gray-600 text-purple-500 focus:ring-purple-500"
+                  onchange="document.getElementById('partnerFields').style.display = this.checked ? 'grid' : 'none'">
+                <span class="text-sm text-gray-300">This is a partner-managed bot</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input name="partner_api_excluded" type="checkbox" value="1" {{ 'checked' if client.partner_api_excluded }}
+                  class="w-4 h-4 rounded border-gray-600 text-purple-500 focus:ring-purple-500">
+                <span class="text-sm text-gray-300">Exclude from N2H API cost tracking</span>
+              </label>
+            </div>
+            <div id="partnerFields" class="col-span-2 grid grid-cols-2 gap-4" style="display: {{ 'grid' if client.is_partner_bot else 'none' }}">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">Partner Name</label>
+                <input name="partner_name" value="{{ client.partner_name or '' }}" placeholder="e.g. Dr. García"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+              </div>
+              <div>
+                <label class="text-xs text-gray-500 block mb-1">Partner Cost / mo (MXN)</label>
+                <input name="partner_monthly_cost_mxn" type="number" step="0.01" value="{{ client.partner_monthly_cost_mxn or 0 }}"
+                  class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500">
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="col-span-2">
           <label class="text-xs text-gray-500 block mb-1">Notes</label>
           <textarea name="notes" rows="2" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500">{{ client.notes or '' }}</textarea>

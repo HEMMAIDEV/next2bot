@@ -8,6 +8,13 @@ from agent.models import Base, Message
 async def inicializar_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Run schema migrations (adds new columns safely to existing tables)
+    try:
+        from agent.migrations import run_migrations
+        await run_migrations()
+    except Exception as e:
+        import logging
+        logging.getLogger("agentkit").warning(f"Migration warning: {e}")
 
 
 async def guardar_mensaje(telefono: str, role: str, content: str):

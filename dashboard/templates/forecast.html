@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Forecast{% endblock %}
+{% block heading %}Revenue Forecast — {{ forecast.generated_at }}{% endblock %}
+
+{% block content %}
+
+<!-- Month progress bar -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-6">
+  <div class="flex items-center justify-between mb-2">
+    <p class="text-sm text-gray-400">Month progress: {{ forecast.days_elapsed }}/{{ forecast.days_in_month }} days ({{ forecast.month_pct }}%)</p>
+    <p class="text-xs text-gray-600">{{ forecast.days_remaining }} days remaining · Rate: ${{ "%.2f"|format(forecast.actual_ai_cost_mxn / forecast.days_elapsed) }} MXN/day in AI costs</p>
+  </div>
+  <div class="w-full bg-gray-800 rounded-full h-2">
+    <div class="bg-blue-500 h-2 rounded-full" style="width: {{ forecast.month_pct }}%"></div>
+  </div>
+</div>
+
+<!-- KPI Row -->
+<div class="grid grid-cols-4 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">Confirmed MRR</p>
+    <p class="text-3xl font-bold text-emerald-400">${{ "%.0f"|format(forecast.mrr_mxn) }}</p>
+    <p class="text-xs text-gray-600 mt-1">MXN · {{ forecast.active_clients }} active clients</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">Projected AI Cost</p>
+    <p class="text-3xl font-bold text-white">${{ "%.0f"|format(forecast.projected_ai_cost_mxn) }}</p>
+    <p class="text-xs text-gray-600 mt-1">MXN (${{ forecast.projected_ai_cost_usd }} USD)</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">Total Projected Cost</p>
+    <p class="text-3xl font-bold text-white">${{ "%.0f"|format(forecast.total_cost_mxn) }}</p>
+    <p class="text-xs text-gray-600 mt-1">AI + Fixed (${{ "%.0f"|format(forecast.fixed_cost_mxn) }}) + Partners (${{ "%.0f"|format(forecast.partner_cost_mxn) }})</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-4 border border-emerald-800/40 {% if forecast.net_margin_mxn < 0 %}border-red-800/40{% endif %}">
+    <p class="text-xs text-gray-500 mb-1">Net Margin</p>
+    <p class="text-3xl font-bold {% if forecast.net_margin_mxn >= 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
+      ${{ "%.0f"|format(forecast.net_margin_mxn) }}
+    </p>
+    <p class="text-xs text-gray-600 mt-1">MXN · {{ forecast.margin_pct }}% margin</p>
+  </div>
+</div>
+
+<!-- Cost breakdown row -->
+<div class="grid grid-cols-3 gap-4 mb-6">
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">AI Cost This Month (so far)</p>
+    <p class="text-xl font-bold text-white">${{ "%.0f"|format(forecast.actual_ai_cost_mxn) }} MXN</p>
+    <p class="text-xs text-gray-600">${{ forecast.actual_ai_cost_usd }} USD · N2H bots only</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">Fixed Infrastructure</p>
+    <p class="text-xl font-bold text-white">${{ "%.0f"|format(forecast.fixed_cost_mxn) }} MXN</p>
+    <p class="text-xs text-gray-600">${{ forecast.fixed_cost_usd }} USD/mo · Whapi + Railway + etc.</p>
+  </div>
+  <div class="bg-gray-900 rounded-xl p-4 border border-gray-800">
+    <p class="text-xs text-gray-500 mb-1">Partner Costs</p>
+    <p class="text-xl font-bold text-white">${{ "%.0f"|format(forecast.partner_cost_mxn) }} MXN</p>
+    <p class="text-xs text-gray-600">{{ forecast.partner_clients }} partner bot{{ 's' if forecast.partner_clients != 1 }} · Paid to partners</p>
+  </div>
+</div>
+
+<div class="grid grid-cols-2 gap-6">
+
+  <!-- Daily chart -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+    <h3 class="text-sm font-semibold text-gray-300 mb-4">Daily: Revenue Share vs AI Cost (7 days)</h3>
+    <canvas id="forecastChart" height="130"></canvas>
+  </div>
+
+  <!-- Per-client breakdown -->
+  <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-800">
+      <h3 class="text-sm font-semibold text-gray-300">Per-Client Breakdown</h3>
+      <p class="text-xs text-gray-500 mt-0.5">Revenue · AI Cost · Margin (this month)</p>
+    </div>
+    <div class="overflow-y-auto max-h-72">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-800 text-gray-500 text-xs uppercase tracking-wider">
+            <th class="px-4 py-2 text-left">Client</th>
+            <th class="px-4 py-2 text-right">Revenue</th>
+            <th class="px-4 py-2 text-right">AI Cost</th>
+            <th class="px-4 py-2 text-right">Margin</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in forecast.per_client %}
+          <tr class="border-b border-gray-800 hover:bg-gray-800/30">
+            <td class="px-4 py-2">
+              <a href="/dashboard/clients/{{ c.id }}" class="text-white hover:text-blue-300 text-sm">{{ c.name }}</a>
+              <div class="flex gap-1 mt-0.5">
+                <span class="text-xs text-gray-600">{{ c.niche }}</span>
+                {% if c.is_partner %}<span class="text-xs text-purple-400">· partner</span>{% endif %}
+              </div>
+            </td>
+            <td class="px-4 py-2 text-right text-emerald-400 font-medium">${{ "%.0f"|format(c.revenue_mxn) }}</td>
+            <td class="px-4 py-2 text-right text-gray-400 text-xs">${{ "%.4f"|format(c.ai_cost_usd) }}</td>
+            <td class="px-4 py-2 text-right font-semibold {% if c.margin_mxn >= 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
+              ${{ "%.0f"|format(c.margin_mxn) }}
+              <span class="text-xs font-normal text-gray-600">({{ c.margin_pct }}%)</span>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="px-4 py-8 text-center text-gray-600">No active clients</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if forecast.per_client %}
+        <tfoot>
+          <tr class="border-t border-gray-700 bg-gray-800/30">
+            <td class="px-4 py-2 text-xs text-gray-400 font-semibold">TOTAL</td>
+            <td class="px-4 py-2 text-right text-emerald-400 font-bold">${{ "%.0f"|format(forecast.mrr_mxn) }}</td>
+            <td class="px-4 py-2 text-right text-gray-400 text-xs">${{ forecast.actual_ai_cost_usd }}</td>
+            <td class="px-4 py-2 text-right font-bold {% if forecast.net_margin_mxn >= 0 %}text-emerald-400{% else %}text-red-400{% endif %}">
+              ${{ "%.0f"|format(forecast.net_margin_mxn) }}
+            </td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<p class="text-xs text-gray-600 mt-4 text-right">Exchange rate: 1 USD = ${{ forecast.usd_to_mxn }} MXN (fixed estimate)</p>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chartData = {{ forecast.daily_chart | tojson }};
+new Chart(document.getElementById('forecastChart'), {
+  type: 'bar',
+  data: {
+    labels: chartData.map(d => d.label),
+    datasets: [
+      {
+        label: 'Daily Revenue Share (MXN)',
+        data: chartData.map(d => d.revenue_mxn),
+        backgroundColor: 'rgba(52,211,153,0.4)',
+        borderColor: 'rgb(52,211,153)',
+        borderWidth: 1,
+        borderRadius: 3,
+      },
+      {
+        label: 'AI Cost (MXN)',
+        data: chartData.map(d => d.cost_mxn),
+        backgroundColor: 'rgba(239,68,68,0.4)',
+        borderColor: 'rgb(239,68,68)',
+        borderWidth: 1,
+        borderRadius: 3,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { labels: { color: '#9CA3AF', font: { size: 11 } } }
+    },
+    scales: {
+      y: { beginAtZero: true, ticks: { color: '#9CA3AF' }, grid: { color: '#1F2937' } },
+      x: { ticks: { color: '#9CA3AF' }, grid: { display: false } }
+    }
+  }
+});
+</script>
+{% endblock %}

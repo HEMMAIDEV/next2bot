@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc, text
 from agent.database import async_session
-from agent.models import Lead, Message, UsageLog, FunnelEvent, Client, ServiceBilling, LearnedPattern
+from agent.models import Lead, Message, UsageLog, FunnelEvent, Client, ServiceBilling, LearnedPattern, Alert, PartnerPayment, Plan
 from dashboard.auth import (
     create_session_token, check_credentials, get_current_user, COOKIE_NAME
 )
@@ -34,6 +34,15 @@ def _redirect_login():
 
 def _check_auth(request: Request):
     return get_current_user(request)
+
+
+async def _alert_badge() -> int:
+    """Returns unread alert count for the sidebar badge."""
+    try:
+        from agent.alerts import get_unread_count
+        return await get_unread_count()
+    except Exception:
+        return 0
 
 
 # ── AUTH ──────────────────────────────────────────────────────
@@ -118,6 +127,7 @@ async def home(request: Request):
             )).scalar()
             week_chart.append({"label": day.strftime("%a"), "count": count})
 
+    alert_badge = await _alert_badge()
     return templates.TemplateResponse(request=request, name="home.html", context={
         "active_page": "home",
         "total_leads": total_leads,
@@ -131,6 +141,7 @@ async def home(request: Request):
         "funnel": funnel,
         "recent_leads": recent_leads,
         "week_chart": week_chart,
+        "alert_badge": alert_badge,
     })
 
 
@@ -562,11 +573,17 @@ async def client_create(
     bot_phone_number: str = Form(""),
     deployment_url: str = Form(""),
     notes: str = Form(""),
+    msg_limit: int = Form(0),
+    cost_limit_usd: float = Form(0.0),
+    alert_threshold_pct: int = Form(80),
+    is_partner_bot: str = Form(""),
+    partner_name: str = Form(""),
+    partner_monthly_cost_mxn: float = Form(0.0),
+    partner_api_excluded: str = Form(""),
 ):
     if not _check_auth(request):
         return _redirect_login()
 
-    from datetime import date
     now = datetime.utcnow()
     next_payment = now.replace(day=min(billing_day, 28)) + timedelta(days=30)
 
@@ -579,6 +596,12 @@ async def client_create(
             next_payment_at=next_payment, payment_status="ok",
             bot_phone_number=bot_phone_number or None,
             deployment_url=deployment_url or None, notes=notes or None,
+            msg_limit=msg_limit or None, cost_limit_usd=cost_limit_usd,
+            alert_threshold_pct=alert_threshold_pct,
+            is_partner_bot=bool(is_partner_bot),
+            partner_name=partner_name or None,
+            partner_monthly_cost_mxn=partner_monthly_cost_mxn,
+            partner_api_excluded=bool(partner_api_excluded),
             created_at=now, updated_at=now,
         )
         session.add(client)
@@ -627,6 +650,24 @@ async def client_detail(request: Request, client_id: int):
                 )).scalar() or 0
             daily_chart.append({"label": day.strftime("%a"), "count": cnt})
 
+        # Partner payment history
+        partner_payments = []
+        if client.is_partner_bot:
+            pp_result = await session.execute(
+                select(PartnerPayment)
+                .where(PartnerPayment.client_id == client.id)
+                .order_by(PartnerPayment.paid_at.desc())
+                .limit(12)
+            )
+            partner_payments = pp_result.scalars().all()
+
+        # Usage limits progress
+        msg_limit = client.msg_limit or 0
+        cost_limit = client.cost_limit_usd or 0
+        msg_pct = min(round((msgs_month / msg_limit * 100) if msg_limit else 0), 100)
+        cost_pct = min(round((cost_month / cost_limit * 100) if cost_limit else 0), 100)
+
+    alert_badge = await _alert_badge()
     return templates.TemplateResponse(request=request, name="client_detail.html", context={
         "active_page": "clients",
         "client": client,
@@ -636,6 +677,10 @@ async def client_detail(request: Request, client_id: int):
         "plans": PLANS,
         "payment_statuses": PAYMENT_STATUSES,
         "days_until_payment": (client.next_payment_at - now).days if client.next_payment_at else None,
+        "partner_payments": partner_payments,
+        "msg_pct": msg_pct,
+        "cost_pct": cost_pct,
+        "alert_badge": alert_badge,
     })
 
 
@@ -676,6 +721,12 @@ async def client_edit(
     monthly_price_mxn: float = Form(0.0), billing_day: int = Form(1),
     bot_phone_number: str = Form(""), deployment_url: str = Form(""),
     notes: str = Form(""),
+    msg_limit: int = Form(0), cost_limit_usd: float = Form(0.0),
+    alert_threshold_pct: int = Form(80),
+    is_partner_bot: str = Form(""),
+    partner_name: str = Form(""),
+    partner_monthly_cost_mxn: float = Form(0.0),
+    partner_api_excluded: str = Form(""),
 ):
     if not _check_auth(request):
         return _redirect_login()
@@ -693,7 +744,39 @@ async def client_edit(
             client.bot_phone_number = bot_phone_number or None
             client.deployment_url = deployment_url or None
             client.notes = notes or None
+            client.msg_limit = msg_limit or None
+            client.cost_limit_usd = cost_limit_usd
+            client.alert_threshold_pct = alert_threshold_pct
+            client.is_partner_bot = bool(is_partner_bot)
+            client.partner_name = partner_name or None
+            client.partner_monthly_cost_mxn = partner_monthly_cost_mxn
+            client.partner_api_excluded = bool(partner_api_excluded)
             client.updated_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
+
+
+@router.post("/clients/{client_id}/partner-payment")
+async def client_partner_payment(
+    request: Request, client_id: int,
+    amount_mxn: float = Form(...),
+    notes: str = Form(""),
+):
+    """Record a payment made to a partner for a client bot."""
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        client = (await session.execute(select(Client).where(Client.id == client_id))).scalar_one_or_none()
+        if client and client.is_partner_bot:
+            pp = PartnerPayment(
+                client_id=client_id,
+                partner_name=client.partner_name,
+                amount_mxn=amount_mxn,
+                notes=notes or None,
+                paid_at=datetime.utcnow(),
+                created_at=datetime.utcnow(),
+            )
+            session.add(pp)
             await session.commit()
     return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
 
@@ -791,3 +874,120 @@ async def mark_service_paid(request: Request, service_id: int):
             svc.updated_at = now
             await session.commit()
     return RedirectResponse(url="/dashboard/billing", status_code=302)
+
+
+@router.post("/billing/{service_id}/balance")
+async def update_service_balance(
+    request: Request, service_id: int,
+    balance_usd: float = Form(...),
+    balance_alert_threshold_usd: float = Form(5.0),
+):
+    """Manually update the current balance for a service (e.g. OpenAI prepaid credits)."""
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        svc = (await session.execute(select(ServiceBilling).where(ServiceBilling.id == service_id))).scalar_one_or_none()
+        if svc:
+            svc.balance_usd = balance_usd
+            svc.balance_alert_threshold_usd = balance_alert_threshold_usd
+            svc.updated_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url="/dashboard/billing", status_code=302)
+
+
+# ── ALERTS ────────────────────────────────────────────────────────────────────
+
+@router.get("/alerts", response_class=HTMLResponse)
+async def alerts_page(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    async with async_session() as session:
+        alerts = (await session.execute(
+            select(Alert)
+            .where(Alert.dismissed == False)
+            .order_by(Alert.created_at.desc())
+            .limit(100)
+        )).scalars().all()
+
+    alert_badge = await _alert_badge()
+    return templates.TemplateResponse(request=request, name="alerts.html", context={
+        "active_page": "alerts",
+        "alerts": alerts,
+        "alert_badge": alert_badge,
+    })
+
+
+@router.post("/alerts/{alert_id}/read")
+async def mark_alert_read(request: Request, alert_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        alert = (await session.execute(select(Alert).where(Alert.id == alert_id))).scalar_one_or_none()
+        if alert:
+            alert.read = True
+            alert.read_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url="/dashboard/alerts", status_code=302)
+
+
+@router.post("/alerts/{alert_id}/dismiss")
+async def dismiss_alert(request: Request, alert_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        alert = (await session.execute(select(Alert).where(Alert.id == alert_id))).scalar_one_or_none()
+        if alert:
+            alert.dismissed = True
+            alert.read = True
+            alert.read_at = datetime.utcnow()
+            await session.commit()
+    return RedirectResponse(url="/dashboard/alerts", status_code=302)
+
+
+@router.post("/alerts/read-all")
+async def read_all_alerts(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        alerts = (await session.execute(
+            select(Alert).where(Alert.read == False)
+        )).scalars().all()
+        now = datetime.utcnow()
+        for a in alerts:
+            a.read = True
+            a.read_at = now
+        await session.commit()
+    return RedirectResponse(url="/dashboard/alerts", status_code=302)
+
+
+@router.post("/alerts/run")
+async def run_alerts_now(request: Request):
+    """Manually trigger alert engine (on-demand)."""
+    if not _check_auth(request):
+        return _redirect_login()
+    try:
+        import asyncio
+        from agent.alerts import generate_all_alerts
+        asyncio.create_task(generate_all_alerts())
+    except Exception:
+        pass
+    return RedirectResponse(url="/dashboard/alerts", status_code=302)
+
+
+# ── FORECAST ──────────────────────────────────────────────────────────────────
+
+@router.get("/forecast", response_class=HTMLResponse)
+async def forecast_page(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    from agent.forecasting import build_forecast
+    forecast = await build_forecast()
+    alert_badge = await _alert_badge()
+
+    return templates.TemplateResponse(request=request, name="forecast.html", context={
+        "active_page": "forecast",
+        "forecast": forecast,
+        "alert_badge": alert_badge,
+    })

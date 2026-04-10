@@ -10,7 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy import select, delete
 from agent.database import async_session
-from agent.models import Lead, Message, FunnelEvent, Client, ServiceBilling
+from agent.models import Lead, Message, FunnelEvent, Client, ServiceBilling, Alert
 
 logger = logging.getLogger("agentkit")
 
@@ -176,5 +176,14 @@ async def run_cleanup_loop() -> None:
                 logger.info(f"Daily cleanup complete: {purged} leads purged")
         except Exception as e:
             logger.error(f"Cleanup loop error: {e}")
+
+        # Generate alerts (usage, payments, API balance)
+        try:
+            from agent.alerts import generate_all_alerts
+            new_alerts = await generate_all_alerts()
+            if new_alerts:
+                logger.info(f"Alert engine: {new_alerts} new alerts generated")
+        except Exception as e:
+            logger.error(f"Alert generation error: {e}")
 
         await asyncio.sleep(CLEANUP_INTERVAL_HOURS * 3600)
