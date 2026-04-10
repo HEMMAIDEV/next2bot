@@ -8,95 +8,209 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <style>
-    .sidebar-link { @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:bg-gray-800 hover:text-white transition; }
-    .sidebar-link.active { @apply bg-gray-800 text-white font-medium; }
+    /* ── Sidebar links ─────────────────────────────────────── */
+    .sidebar-link {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 0.75rem; border-radius: 0.5rem;
+      font-size: 0.875rem; color: #9ca3af;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap; overflow: hidden;
+    }
+    .sidebar-link:hover  { background: #1f2937; color: #fff; }
+    .sidebar-link.active { background: #1f2937; color: #fff; font-weight: 500; }
+
+    /* ── Sidebar + main transition ─────────────────────────── */
+    #sidebar       { transition: width 0.2s ease; }
+    #main-content  { transition: margin-left 0.2s ease; }
+
+    /* ── Collapsed state (class on <body>) ─────────────────── */
+    body.sidebar-collapsed #sidebar      { width: 3.5rem; }   /* 56 px */
+    body.sidebar-collapsed #main-content { margin-left: 3.5rem; }
+
+    body.sidebar-collapsed .sb-label    { display: none !important; }
+    body.sidebar-collapsed .sb-section  { display: none !important; }
+    body.sidebar-collapsed .sb-brand    { display: none !important; }
+
+    body.sidebar-collapsed .sidebar-link {
+      justify-content: center;
+      padding: 0.5rem 0;
+      gap: 0;
+    }
+
+    /* alert dot in collapsed mode */
+    body.sidebar-collapsed .sb-alert-dot  { display: flex !important; }
+    .sb-alert-dot { display: none; }
   </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen flex">
 
-  <!-- Sidebar -->
-  <aside class="w-56 bg-gray-900 border-r border-gray-800 flex flex-col min-h-screen fixed left-0 top-0">
-    <!-- Logo -->
-    <div class="px-4 py-5 border-b border-gray-800">
-      <p class="font-bold text-white text-base">Next2Human</p>
+  <!-- ═══════════════════════ SIDEBAR ═══════════════════════ -->
+  <aside id="sidebar"
+         class="w-56 bg-gray-900 border-r border-gray-800 flex flex-col min-h-screen fixed left-0 top-0 z-30 overflow-hidden">
+
+    <!-- Brand — hidden when collapsed -->
+    <div class="sb-brand px-4 py-5 border-b border-gray-800 flex-shrink-0">
+      <p class="font-bold text-white text-base leading-tight">Next2Human</p>
       <p class="text-xs text-gray-500">Operations Center</p>
     </div>
 
     <!-- Nav -->
-    <nav class="flex-1 p-3 space-y-1">
-      <a href="/dashboard" class="sidebar-link {% if active_page == 'home' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-        Overview
-      </a>
-      <a href="/dashboard/leads" class="sidebar-link {% if active_page == 'leads' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        Leads
-      </a>
-      <a href="/dashboard/monitor" class="sidebar-link {% if active_page == 'monitor' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-        Monitor
-      </a>
-      <a href="/dashboard/services" class="sidebar-link {% if active_page == 'services' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/></svg>
-        Services
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto overflow-x-hidden">
+
+      <a href="/dashboard"
+         class="sidebar-link {% if active_page == 'home' %}active{% endif %}"
+         title="Overview">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+        </svg>
+        <span class="sb-label">Overview</span>
       </a>
 
-      <a href="/dashboard/availability" class="sidebar-link {% if active_page == 'availability' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        Calendar
+      <a href="/dashboard/leads"
+         class="sidebar-link {% if active_page == 'leads' %}active{% endif %}"
+         title="Leads">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="sb-label">Leads</span>
       </a>
 
-      <div class="pt-2 mt-2 border-t border-gray-800">
+      <a href="/dashboard/monitor"
+         class="sidebar-link {% if active_page == 'monitor' %}active{% endif %}"
+         title="Monitor">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+        </svg>
+        <span class="sb-label">Monitor</span>
+      </a>
+
+      <a href="/dashboard/services"
+         class="sidebar-link {% if active_page == 'services' %}active{% endif %}"
+         title="Services">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+        </svg>
+        <span class="sb-label">Services</span>
+      </a>
+
+      <a href="/dashboard/availability"
+         class="sidebar-link {% if active_page == 'availability' %}active{% endif %}"
+         title="Calendar">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <span class="sb-label">Calendar</span>
+      </a>
+
+      <!-- BUSINESS section -->
+      <div class="sb-section pt-2 mt-2 border-t border-gray-800">
         <p class="px-3 py-1 text-xs text-gray-600 uppercase tracking-wider font-medium">Business</p>
       </div>
+      <div class="hidden sb-section-divider border-t border-gray-800 my-1"></div>
 
-      <a href="/dashboard/clients" class="sidebar-link {% if active_page == 'clients' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-        Clients
+      <a href="/dashboard/clients"
+         class="sidebar-link {% if active_page == 'clients' %}active{% endif %}"
+         title="Clients">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+        </svg>
+        <span class="sb-label">Clients</span>
       </a>
 
-      <a href="/dashboard/billing" class="sidebar-link {% if active_page == 'billing' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        Billing
+      <a href="/dashboard/billing"
+         class="sidebar-link {% if active_page == 'billing' %}active{% endif %}"
+         title="Billing">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span class="sb-label">Billing</span>
       </a>
 
-      <a href="/dashboard/forecast" class="sidebar-link {% if active_page == 'forecast' %}active{% endif %}">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
-        Forecast
+      <a href="/dashboard/forecast"
+         class="sidebar-link {% if active_page == 'forecast' %}active{% endif %}"
+         title="Forecast">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+        </svg>
+        <span class="sb-label">Forecast</span>
       </a>
 
-      <div class="pt-2 mt-2 border-t border-gray-800">
+      <!-- SYSTEM section -->
+      <div class="sb-section pt-2 mt-2 border-t border-gray-800">
         <p class="px-3 py-1 text-xs text-gray-600 uppercase tracking-wider font-medium">System</p>
       </div>
 
-      <a href="/dashboard/alerts" class="sidebar-link {% if active_page == 'alerts' %}active{% endif %} relative">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-        Alerts
-        {% if alert_badge is defined and alert_badge > 0 %}
-        <span class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-          {{ alert_badge if alert_badge < 10 else '9+' }}
+      <a href="/dashboard/alerts"
+         class="sidebar-link {% if active_page == 'alerts' %}active{% endif %} relative"
+         title="Alerts">
+        <span class="relative inline-flex flex-shrink-0">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+          </svg>
+          {% if alert_badge is defined and alert_badge > 0 %}
+          <!-- Red dot — always visible in collapsed mode -->
+          <span class="sb-alert-dot absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+          {% endif %}
         </span>
-        {% endif %}
+        <span class="sb-label flex items-center gap-2">
+          Alerts
+          {% if alert_badge is defined and alert_badge > 0 %}
+          <span class="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
+            {{ alert_badge if alert_badge < 10 else '9+' }}
+          </span>
+          {% endif %}
+        </span>
       </a>
+
+      <!-- Collapse toggle (sits inside nav, above logout) -->
+      <div class="pt-2 mt-2 border-t border-gray-800">
+        <button onclick="toggleSidebar()"
+                class="sidebar-link w-full text-gray-500 hover:text-white hover:bg-gray-800"
+                title="Toggle sidebar" id="sb-toggle-btn">
+          <svg id="sb-toggle-icon" class="w-4 h-4 flex-shrink-0" fill="none"
+               stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>
+          </svg>
+          <span class="sb-label">Collapse</span>
+        </button>
+      </div>
     </nav>
 
-    <!-- User -->
-    <div class="p-3 border-t border-gray-800">
-      <a href="/dashboard/logout" class="sidebar-link text-red-400 hover:text-red-300 hover:bg-red-950/30">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-        Logout
+    <!-- Logout -->
+    <div class="p-3 border-t border-gray-800 flex-shrink-0">
+      <a href="/dashboard/logout"
+         class="sidebar-link text-red-400 hover:text-red-300 hover:bg-red-950/30"
+         title="Logout">
+        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+        <span class="sb-label">Logout</span>
       </a>
     </div>
   </aside>
 
-  <!-- Main content -->
-  <div class="ml-56 flex-1 flex flex-col min-h-screen">
+  <!-- ═══════════════════════ MAIN CONTENT ═══════════════════ -->
+  <div id="main-content" class="ml-56 flex-1 flex flex-col min-h-screen">
     <!-- Top bar -->
-    <header class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between">
+    <header class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 z-20">
       <h1 class="font-semibold text-white">{% block heading %}Dashboard{% endblock %}</h1>
       <div class="flex items-center gap-3">
         <span class="text-xs text-gray-500" id="last-updated">Updated just now</span>
-        <button onclick="window.location.reload()" class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-lg text-gray-300">↻ Refresh</button>
+        <button onclick="window.location.reload()"
+                class="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded-lg text-gray-300">
+          ↻ Refresh
+        </button>
       </div>
     </header>
 
@@ -106,8 +220,35 @@
   </div>
 
   <script>
-    // Update timestamp
-    document.getElementById('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    // ── Timestamp ─────────────────────────────────────────────
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+
+    // ── Sidebar collapse / expand ─────────────────────────────
+    const STORAGE_KEY = 'n2h_sidebar_collapsed';
+
+    function toggleSidebar() {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+      localStorage.setItem(STORAGE_KEY, collapsed ? '1' : '0');
+
+      // Flip the toggle icon direction
+      const icon = document.getElementById('sb-toggle-icon');
+      if (icon) {
+        icon.innerHTML = collapsed
+          ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>'
+          : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/>';
+      }
+    }
+
+    // Restore on page load (no flash: script runs before paint completes)
+    (function () {
+      if (localStorage.getItem(STORAGE_KEY) === '1') {
+        document.body.classList.add('sidebar-collapsed');
+        const icon = document.getElementById('sb-toggle-icon');
+        if (icon) icon.innerHTML =
+          '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>';
+      }
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>
