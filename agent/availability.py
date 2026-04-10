@@ -201,9 +201,9 @@ async def get_availability_summary_for_bot(
             continue
 
         day_name = DAYS_ES[dow]
-        fecha_str = d.strftime("%d/%m")
+        fecha_str = d.strftime("%d/%m/%Y")
         slots_str = ", ".join(free) + " hrs"
-        lines.append(f"• {day_name} {fecha_str}: {slots_str}")
+        lines.append(f"• {day_name} {fecha_str} [{d.isoformat()}]: {slots_str}")
 
     if not lines:
         return "No hay horarios disponibles en los próximos días."

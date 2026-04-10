@@ -74,8 +74,11 @@ def cargar_config_prompts() -> dict:
 
 
 def cargar_system_prompt() -> str:
+    from agent.availability import DAYS_ES
     config = cargar_config_prompts()
-    hoy = datetime.now().strftime("%Y-%m-%d (%A)")
+    now = datetime.now()
+    dia_es = DAYS_ES[now.weekday()]
+    hoy = f"{now.strftime('%Y-%m-%d')} ({dia_es})"
     base = config.get("system_prompt", "Eres un asistente útil.")
     return f"{base}\n\nFecha de hoy: {hoy}."
 
@@ -213,16 +216,18 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                         from agent.availability import DAYS_ES
                         day_label = DAYS_ES[target.weekday()]
                         if slots:
-                            summary = (f"Para el {day_label} {target.strftime('%d/%m')} "
+                            summary = (f"Para el {day_label} {target.strftime('%d/%m/%Y')} [{target.isoformat()}] "
                                        f"los horarios libres son: {', '.join(slots)} hrs.")
                         else:
-                            summary = f"El {day_label} {target.strftime('%d/%m')} no hay horarios disponibles."
+                            summary = f"El {day_label} {target.strftime('%d/%m/%Y')} [{target.isoformat()}] no hay horarios disponibles."
                     else:
                         summary = await get_availability_summary_for_bot(days_ahead=7)
                     tool_result = (
                         f"{summary}\n\n"
                         f"Instrucción: Comparte estos horarios con el prospecto de forma natural. "
-                        f"Pregúntale cuál le viene mejor. Si elige uno, úsalo para llamar agendar_cita."
+                        f"IMPORTANTE: Usa los días y fechas EXACTAMENTE como aparecen arriba — no recalcules ni cambies ninguna fecha. "
+                        f"Cada línea tiene el formato 'Día DD/MM/YYYY [YYYY-MM-DD]' — usa ese día y esa fecha tal cual. "
+                        f"Pregúntale cuál le viene mejor. Cuando elija, llama a agendar_cita usando la fecha ISO [YYYY-MM-DD] correspondiente."
                     )
                 except Exception as e:
                     logger.error(f"verificar_disponibilidad error: {e}")
