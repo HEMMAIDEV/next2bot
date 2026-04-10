@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select, func, desc, text
 from agent.database import async_session
-from agent.models import Lead, Message, UsageLog, FunnelEvent, Client, ServiceBilling, LearnedPattern, Alert, PartnerPayment, Plan
+from agent.models import Lead, Message, UsageLog, FunnelEvent, Client, ServiceBilling, LearnedPattern, Alert, PartnerPayment, Plan, AvailabilityRule
 from dashboard.auth import (
     create_session_token, check_credentials, get_current_user, COOKIE_NAME
 )
@@ -991,3 +991,127 @@ async def forecast_page(request: Request):
         "forecast": forecast,
         "alert_badge": alert_badge,
     })
+
+
+# ── AVAILABILITY / CALENDAR ───────────────────────────────────────────────────
+
+DAYS_DISPLAY = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+DAYS_ES_DISPLAY = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+
+
+@router.get("/availability", response_class=HTMLResponse)
+async def availability_page(request: Request):
+    if not _check_auth(request):
+        return _redirect_login()
+
+    from agent.availability import get_rules
+    from agent.calendar_tool import get_free_slots_for_week_sync
+    from datetime import date, timedelta
+
+    rules = await get_rules()
+
+    # If no rules yet (first run before seed), show empty defaults
+    rule_map = {r.day_of_week: r for r in rules}
+
+    # Build this week (Mon → Sun)
+    today      = date.today()
+    week_start = today - timedelta(days=today.weekday())   # Monday
+    week_slots = {}
+    try:
+        week_slots = get_free_slots_for_week_sync(week_start, rules)
+    except Exception:
+        pass  # Calendar unreachable — show schedule editor only
+
+    # Build next week preview
+    next_week_start = week_start + timedelta(days=7)
+    next_week_slots = {}
+    try:
+        next_week_slots = get_free_slots_for_week_sync(next_week_start, rules)
+    except Exception:
+        pass
+
+    # Enrich with display metadata
+    weeks = []
+    for label, ws, slot_data in [
+        ("Esta semana", week_start, week_slots),
+        ("Próxima semana", next_week_start, next_week_slots),
+    ]:
+        days = []
+        for i in range(7):
+            d      = ws + timedelta(days=i)
+            rule   = rule_map.get(i)
+            slots  = slot_data.get(d.isoformat(), [])
+            days.append({
+                "date":      d,
+                "date_str":  d.isoformat(),
+                "label":     DAYS_ES_DISPLAY[i],
+                "is_today":  d == today,
+                "is_active": rule.is_active if rule else False,
+                "window":    f"{rule.start_time}–{rule.end_time}" if rule and rule.is_active else "—",
+                "slots":     slots,
+            })
+        weeks.append({"label": label, "days": days})
+
+    alert_badge = await _alert_badge()
+    return templates.TemplateResponse(request=request, name="availability.html", context={
+        "active_page": "availability",
+        "rules":       rules,
+        "rule_map":    rule_map,
+        "weeks":       weeks,
+        "days_display": DAYS_ES_DISPLAY,
+        "alert_badge": alert_badge,
+    })
+
+
+@router.post("/availability")
+async def availability_save(request: Request):
+    """Save all 7 day rules from the schedule editor form."""
+    if not _check_auth(request):
+        return _redirect_login()
+
+    form = await request.form()
+    from agent.availability import upsert_rule
+
+    for dow in range(7):
+        start    = form.get(f"start_{dow}", "09:00")
+        end      = form.get(f"end_{dow}", "18:00")
+        is_active = f"active_{dow}" in form   # checkbox
+        await upsert_rule(dow, start, end, is_active)
+
+    return RedirectResponse(url="/dashboard/availability", status_code=302)
+
+
+@router.get("/availability/slots", response_class=HTMLResponse)
+async def availability_slots_api(request: Request, fecha: str = ""):
+    """
+    HTMX partial — returns free slots for a specific date as HTML snippet.
+    Used for live slot preview in the dashboard.
+    """
+    if not _check_auth(request):
+        return HTMLResponse("Unauthorized", status_code=401)
+
+    from agent.availability import get_rules, compute_free_slots
+    from agent.calendar_tool import get_booked_periods_for_date
+    from datetime import date as _date
+
+    try:
+        target = _date.fromisoformat(fecha) if fecha else _date.today()
+    except ValueError:
+        return HTMLResponse("<p class='text-red-400 text-sm'>Invalid date</p>")
+
+    rules    = await get_rules()
+    rule_map = {r.day_of_week: r for r in rules}
+    rule     = rule_map.get(target.weekday())
+    booked   = get_booked_periods_for_date(target)
+    slots    = compute_free_slots(rule, booked) if rule else []
+
+    if not slots:
+        html = "<p class='text-gray-500 text-sm'>No hay horarios disponibles para esta fecha.</p>"
+    else:
+        items = "".join(
+            f"<span class='bg-emerald-900/40 text-emerald-300 text-sm px-3 py-1 rounded-full border border-emerald-800'>{s}</span>"
+            for s in slots
+        )
+        html = f"<div class='flex flex-wrap gap-2'>{items}</div>"
+
+    return HTMLResponse(html)

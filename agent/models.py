@@ -208,6 +208,25 @@ class Alert(Base):
 
 # ── PARTNER PAYMENTS ─────────────────────────────────────────────────────────
 
+# ── AVAILABILITY RULES ───────────────────────────────────────────────────────
+
+class AvailabilityRule(Base):
+    """
+    Horacio's weekly availability schedule.
+    One row per day of week. Edited from the dashboard and used by the
+    calendar tool to compute free 1-hour slots.
+    """
+    __tablename__ = "availability_rules"
+
+    id:           Mapped[int]       = mapped_column(Integer, primary_key=True, autoincrement=True)
+    day_of_week:  Mapped[int]       = mapped_column(Integer, unique=True, index=True)  # 0=Mon … 6=Sun
+    start_time:   Mapped[str]       = mapped_column(String(5))                          # "17:00"
+    end_time:     Mapped[str]       = mapped_column(String(5))                          # "21:00"
+    is_active:    Mapped[bool]      = mapped_column(Boolean, default=True)              # false = day off
+    created_at:   Mapped[datetime]  = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at:   Mapped[datetime]  = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class PartnerPayment(Base):
     """
     Tracks payments made to partners for partner-managed client bots.

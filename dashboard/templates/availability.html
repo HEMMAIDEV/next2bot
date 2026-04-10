@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Availability{% endblock %}
+{% block heading %}Calendar & Availability{% endblock %}
+
+{% block content %}
+
+{% set day_names = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"] %}
+
+<div class="grid grid-cols-3 gap-6">
+
+  <!-- LEFT: Schedule Editor -->
+  <div class="col-span-1">
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-800">
+        <h3 class="text-sm font-semibold text-white">Weekly Schedule</h3>
+        <p class="text-xs text-gray-500 mt-0.5">Set your available hours per day. 1-hour meetings.</p>
+      </div>
+
+      <form method="POST" action="/dashboard/availability" class="p-4 space-y-2">
+        {% for dow in range(7) %}
+        {% set rule = rule_map.get(dow) %}
+        {% set is_active = rule.is_active if rule else False %}
+        {% set start = rule.start_time if rule else "09:00" %}
+        {% set end = rule.end_time if rule else "18:00" %}
+
+        <div class="rounded-lg border {% if is_active %}border-blue-800/50 bg-gray-800/40{% else %}border-gray-800 bg-gray-900{% endif %} p-3"
+             id="day-row-{{ dow }}">
+          <div class="flex items-center justify-between mb-{% if is_active %}2{% else %}0{% endif %}">
+            <label class="flex items-center gap-2 cursor-pointer flex-1">
+              <input type="checkbox" name="active_{{ dow }}" value="1"
+                {{ 'checked' if is_active }}
+                onchange="toggleDay({{ dow }}, this.checked)"
+                class="w-4 h-4 rounded border-gray-600 text-blue-500 focus:ring-blue-500">
+              <span class="text-sm font-medium {{ 'text-white' if is_active else 'text-gray-500' }}">
+                {{ day_names[dow] }}
+              </span>
+            </label>
+            <span class="text-xs {{ 'text-blue-400' if is_active else 'text-gray-600' }} font-medium" id="day-window-{{ dow }}">
+              {% if is_active %}{{ start }}–{{ end }}{% else %}Off{% endif %}
+            </span>
+          </div>
+
+          <div id="day-times-{{ dow }}" class="{{ '' if is_active else 'hidden' }} grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">From</label>
+              <input name="start_{{ dow }}" type="time" value="{{ start }}"
+                onchange="updateWindow({{ dow }})"
+                class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Until</label>
+              <input name="end_{{ dow }}" type="time" value="{{ end }}"
+                onchange="updateWindow({{ dow }})"
+                class="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+
+        <div class="pt-2">
+          <button type="submit"
+            class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition">
+            💾 Save Schedule
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Quick slot check -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 mt-4">
+      <h3 class="text-sm font-semibold text-white mb-3">Check a Date</h3>
+      <input type="date" id="slot-date"
+        value="{{ '' }}"
+        oninput="loadSlots(this.value)"
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 mb-3">
+      <div id="slot-preview" class="min-h-8">
+        <p class="text-xs text-gray-600">Pick a date to see available slots</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: 2-week calendar view -->
+  <div class="col-span-2 space-y-5">
+
+    {% for week in weeks %}
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <div class="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white">{{ week.label }}</h3>
+        <p class="text-xs text-gray-500">Horarios libres sincronizados con Google Calendar</p>
+      </div>
+
+      <div class="grid grid-cols-7 divide-x divide-gray-800">
+        {% for day in week.days %}
+        <div class="p-3 {% if day.is_today %}bg-blue-950/20{% endif %} {% if not day.is_active %}opacity-40{% endif %}">
+
+          <!-- Day header -->
+          <div class="text-center mb-2">
+            <p class="text-xs font-semibold {% if day.is_today %}text-blue-400{% else %}text-gray-400{% endif %}">
+              {{ day.label[:3] }}
+            </p>
+            <p class="text-lg font-bold {% if day.is_today %}text-white{% else %}text-gray-300{% endif %}">
+              {{ day.date.day }}
+            </p>
+            {% if day.is_today %}
+            <span class="text-xs text-blue-400 font-medium">hoy</span>
+            {% endif %}
+          </div>
+
+          {% if not day.is_active %}
+            <p class="text-xs text-gray-600 text-center">Off</p>
+          {% elif not day.slots %}
+            <p class="text-xs text-gray-500 text-center">Sin espacios</p>
+            <p class="text-xs text-gray-700 text-center mt-1">{{ day.window }}</p>
+          {% else %}
+            <div class="space-y-1">
+              {% for slot in day.slots %}
+              <div class="text-xs text-center py-1 px-1 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-800/50 font-medium">
+                {{ slot }}
+              </div>
+              {% endfor %}
+            </div>
+            <p class="text-xs text-gray-700 text-center mt-2">{{ day.window }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    <!-- Legend -->
+    <div class="flex items-center gap-6 px-1">
+      <div class="flex items-center gap-2">
+        <div class="w-3 h-3 rounded bg-emerald-900 border border-emerald-700"></div>
+        <span class="text-xs text-gray-500">Slot libre</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-3 h-3 rounded bg-gray-800 border border-gray-700"></div>
+        <span class="text-xs text-gray-500">Sin disponibilidad (todo ocupado)</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-3 h-3 rounded bg-gray-900 border border-gray-800 opacity-40"></div>
+        <span class="text-xs text-gray-500">Día desactivado</span>
+      </div>
+      <span class="text-xs text-gray-600 ml-auto">Reuniones de 1 hora · Zona horaria: Ciudad de México</span>
+    </div>
+
+    <!-- How the bot uses this -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h3 class="text-sm font-semibold text-white mb-3">🤖 How the Bot Uses This</h3>
+      <div class="grid grid-cols-3 gap-4 text-sm">
+        <div class="bg-gray-800/50 rounded-lg p-3">
+          <p class="text-blue-400 font-medium mb-1">1. Lead asks for a meeting</p>
+          <p class="text-gray-400 text-xs">Bot calls <code class="text-emerald-400">verificar_disponibilidad</code> → reads your schedule + Google Calendar events → shows real open slots</p>
+        </div>
+        <div class="bg-gray-800/50 rounded-lg p-3">
+          <p class="text-blue-400 font-medium mb-1">2. Lead picks a slot</p>
+          <p class="text-gray-400 text-xs">Bot calls <code class="text-emerald-400">agendar_cita</code> → creates a 1-hour Google Calendar event with full context for Horacio</p>
+        </div>
+        <div class="bg-gray-800/50 rounded-lg p-3">
+          <p class="text-blue-400 font-medium mb-1">3. Sync confirmed</p>
+          <p class="text-gray-400 text-xs">Bot re-checks the slot after booking to confirm it's marked as taken. Sends an enthusiastic confirmation to the lead.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleDay(dow, isActive) {
+  const timesEl = document.getElementById(`day-times-${dow}`);
+  const rowEl   = document.getElementById(`day-row-${dow}`);
+  const winEl   = document.getElementById(`day-window-${dow}`);
+  const label   = rowEl.querySelector('span.text-sm');
+
+  if (isActive) {
+    timesEl.classList.remove('hidden');
+    rowEl.classList.add('border-blue-800/50', 'bg-gray-800/40');
+    rowEl.classList.remove('border-gray-800', 'bg-gray-900');
+    label.classList.add('text-white');
+    label.classList.remove('text-gray-500');
+    updateWindow(dow);
+  } else {
+    timesEl.classList.add('hidden');
+    rowEl.classList.remove('border-blue-800/50', 'bg-gray-800/40');
+    rowEl.classList.add('border-gray-800', 'bg-gray-900');
+    label.classList.remove('text-white');
+    label.classList.add('text-gray-500');
+    winEl.textContent = 'Off';
+    winEl.className = 'text-xs text-gray-600 font-medium';
+  }
+}
+
+function updateWindow(dow) {
+  const start = document.querySelector(`[name="start_${dow}"]`)?.value || '';
+  const end   = document.querySelector(`[name="end_${dow}"]`)?.value || '';
+  const winEl = document.getElementById(`day-window-${dow}`);
+  if (start && end) {
+    winEl.textContent = `${start}–${end}`;
+    winEl.className = 'text-xs text-blue-400 font-medium';
+  }
+}
+
+function loadSlots(fecha) {
+  if (!fecha) return;
+  const preview = document.getElementById('slot-preview');
+  preview.innerHTML = '<p class="text-xs text-gray-500">Checking calendar…</p>';
+  fetch(`/dashboard/availability/slots?fecha=${fecha}`, {
+    headers: { 'Accept': 'text/html' }
+  })
+    .then(r => r.text())
+    .then(html => { preview.innerHTML = html; })
+    .catch(() => { preview.innerHTML = '<p class="text-xs text-red-400">Error al consultar el calendario.</p>'; });
+}
+</script>
+{% endblock %}

@@ -141,6 +141,15 @@ DEFAULT_SERVICES = [
 ]
 
 
+async def seed_default_availability_rules() -> None:
+    """Seeds Horacio's default weekly availability if table is empty."""
+    try:
+        from agent.availability import seed_default_availability
+        await seed_default_availability()
+    except Exception as e:
+        logger.warning(f"Availability seed warning: {e}")
+
+
 async def seed_default_billing() -> None:
     """Seeds default service billing records if none exist."""
     async with async_session() as session:

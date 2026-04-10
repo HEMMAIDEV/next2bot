@@ -15,12 +15,36 @@ OPENAI_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "verificar_disponibilidad",
+            "description": (
+                "Verifica los horarios disponibles de Horacio para esta semana o un día específico. "
+                "Úsala cuando el prospecto pregunte cuándo puede hablar, pida una cita, o quiera saber "
+                "los horarios disponibles. SIEMPRE úsala antes de agendar_cita para mostrar opciones reales."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fecha": {
+                        "type": "string",
+                        "description": (
+                            "Fecha específica en formato YYYY-MM-DD. "
+                            "Si no se especifica, muestra los próximos 7 días."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "agendar_cita",
             "description": (
-                "Agenda una cita, llamada o demo en el calendario de Next2Human. "
-                "Úsala SOLO cuando el prospecto haya confirmado explícitamente una fecha y hora. "
-                "Antes de llamar esta función, asegúrate de tener el contexto de la reunión "
-                "(para qué es, qué quieren resolver) para que Horacio vaya preparado."
+                "Agenda una cita de 1 hora en el calendario de Horacio. "
+                "Úsala SOLO cuando el prospecto haya confirmado explícitamente una fecha y hora "
+                "de las opciones mostradas por verificar_disponibilidad. "
+                "Asegúrate de tener el contexto de la reunión para que Horacio vaya preparado."
             ),
             "parameters": {
                 "type": "object",
@@ -28,12 +52,12 @@ OPENAI_TOOLS = [
                     "titulo":      {"type": "string", "description": "Título del evento — incluye el nombre del negocio si lo sabes"},
                     "fecha":       {"type": "string", "description": "Fecha en formato YYYY-MM-DD"},
                     "hora":        {"type": "string", "description": "Hora en formato HH:MM (24h)"},
-                    "descripcion": {"type": "string", "description": "Resumen del caso del prospecto: qué problema quiere resolver y qué discutir en la llamada"},
+                    "descripcion": {"type": "string", "description": "Resumen del caso del prospecto: qué problema quiere resolver"},
                 },
                 "required": ["titulo", "fecha", "hora"],
             },
         },
-    }
+    },
 ]
 
 
@@ -154,34 +178,85 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
         await log_usage("openai", "chat", tokens_in, tokens_out, latency, phone=telefono)
 
         if choice.finish_reason == "tool_calls":
-            tool_call = choice.message.tool_calls[0]
-            args = json.loads(tool_call.function.arguments)
-            logger.info(f"Function call: agendar_cita {args}")
+            tool_call   = choice.message.tool_calls[0]
+            fn_name     = tool_call.function.name
+            args        = json.loads(tool_call.function.arguments)
+            logger.info(f"Function call: {fn_name} {args}")
 
-            from agent.calendar_tool import crear_evento
-            link = crear_evento(
-                titulo=args.get("titulo", "Llamada de Diagnóstico — Next2Human"),
-                fecha=args["fecha"],
-                hora=args["hora"],
-                descripcion=args.get("descripcion", ""),
-                telefono=telefono,
-            )
+            # ── TOOL: verificar_disponibilidad ────────────────────────────
+            if fn_name == "verificar_disponibilidad":
+                try:
+                    from agent.availability import get_availability_summary_for_bot
+                    from datetime import date as _date
+                    if args.get("fecha"):
+                        # Single date: show slots for that day only
+                        target = _date.fromisoformat(args["fecha"])
+                        from agent.calendar_tool import get_booked_periods_for_date
+                        from agent.availability import get_rules, compute_free_slots
+                        rules    = await get_rules()
+                        rule_map = {r.day_of_week: r for r in rules}
+                        rule     = rule_map.get(target.weekday())
+                        booked   = get_booked_periods_for_date(target)
+                        slots    = compute_free_slots(rule, booked)
+                        from agent.availability import DAYS_ES
+                        day_label = DAYS_ES[target.weekday()]
+                        if slots:
+                            summary = (f"Para el {day_label} {target.strftime('%d/%m')} "
+                                       f"los horarios libres son: {', '.join(slots)} hrs.")
+                        else:
+                            summary = f"El {day_label} {target.strftime('%d/%m')} no hay horarios disponibles."
+                    else:
+                        summary = await get_availability_summary_for_bot(days_ahead=7)
+                    tool_result = (
+                        f"{summary}\n\n"
+                        f"Instrucción: Comparte estos horarios con el prospecto de forma natural. "
+                        f"Pregúntale cuál le viene mejor. Si elige uno, úsalo para llamar agendar_cita."
+                    )
+                except Exception as e:
+                    logger.error(f"verificar_disponibilidad error: {e}")
+                    tool_result = (
+                        "No pude consultar el calendario en este momento. "
+                        "Instrucción: Dile al prospecto que Horacio le enviará sus horarios disponibles "
+                        "directamente por WhatsApp en los próximos minutos."
+                    )
 
-            if not link.startswith("error"):
-                tool_result = (
-                    f"Evento creado exitosamente.\n"
-                    f"Detalles: {args.get('titulo')} el {args['fecha']} a las {args['hora']}.\n"
-                    f"Link del evento: {link}\n"
-                    f"Instrucción: Confirma la cita con entusiasmo. Menciona la fecha y hora claramente. "
-                    f"Dile que Horacio va a llegar preparado con ideas para su caso. "
-                    f"Cierra con energía positiva y dile que aquí estás si necesita algo más."
+            # ── TOOL: agendar_cita ────────────────────────────────────────
+            elif fn_name == "agendar_cita":
+                from agent.calendar_tool import crear_evento, check_slot_available
+                link = crear_evento(
+                    titulo=args.get("titulo", "Llamada de Diagnóstico — Next2Human"),
+                    fecha=args["fecha"],
+                    hora=args["hora"],
+                    descripcion=args.get("descripcion", ""),
+                    telefono=telefono,
                 )
+
+                if not link.startswith("error"):
+                    # Post-booking sync confirmation
+                    slot_now_taken = not check_slot_available(args["fecha"], args["hora"])
+                    sync_status = (
+                        "✅ Confirmado en calendario — el horario ya aparece como ocupado."
+                        if slot_now_taken else
+                        "⚠️ El evento fue creado pero el calendario puede tardar unos segundos en sincronizar."
+                    )
+                    tool_result = (
+                        f"Evento creado exitosamente.\n"
+                        f"Título: {args.get('titulo')} | Fecha: {args['fecha']} | Hora: {args['hora']}\n"
+                        f"Link: {link}\n"
+                        f"Sincronización: {sync_status}\n\n"
+                        f"Instrucción: Confirma la cita con entusiasmo. Menciona la fecha y hora exactas. "
+                        f"Dile que Horacio llegará preparado con ideas para su caso específico. "
+                        f"Cierra con energía positiva y ofrécete si necesita mover la cita."
+                    )
+                else:
+                    tool_result = (
+                        "No se pudo crear el evento automáticamente. "
+                        "Instrucción: Disculpate brevemente y dile que Horacio confirmará la cita "
+                        "directamente por WhatsApp en los próximos minutos."
+                    )
+
             else:
-                tool_result = (
-                    "No se pudo crear el evento automáticamente. "
-                    "Instrucción: Disculpate brevemente y dile que Horacio le confirmará la cita "
-                    "directamente por WhatsApp en los próximos minutos."
-                )
+                tool_result = f"Herramienta '{fn_name}' no reconocida."
 
             mensajes.append(choice.message)
             mensajes.append({"role": "tool", "tool_call_id": tool_call.id, "content": tool_result})

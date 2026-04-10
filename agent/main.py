@@ -38,6 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Billing seed failed: {e}")
 
+    # Seed default availability rules on first run
+    try:
+        from agent.cleanup import seed_default_availability_rules
+        await seed_default_availability_rules()
+    except Exception as e:
+        logger.warning(f"Availability seed failed: {e}")
+
     # Start background maintenance loop (cleanup + payment status refresh)
     try:
         from agent.cleanup import run_cleanup_loop
