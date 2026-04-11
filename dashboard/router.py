@@ -959,6 +959,54 @@ async def update_service_balance(
     return RedirectResponse(url="/dashboard/billing", status_code=302)
 
 
+@router.post("/billing/add-service")
+async def add_service(
+    request: Request,
+    service_name: str = Form(...),
+    display_name: str = Form(...),
+    plan_name: str = Form(""),
+    monthly_cost_usd: float = Form(0.0),
+    billing_day: int = Form(1),
+    billing_cycle: str = Form("monthly"),
+    auto_pay: bool = Form(False),
+    notes: str = Form(""),
+):
+    if not _check_auth(request):
+        return _redirect_login()
+    import re
+    safe_name = re.sub(r"[^a-z0-9_]", "_", service_name.lower().strip())
+    async with async_session() as session:
+        usd_to_mxn = 18.0
+        record = ServiceBilling(
+            service_name=safe_name,
+            display_name=display_name.strip(),
+            plan_name=plan_name.strip() or None,
+            monthly_cost_usd=monthly_cost_usd,
+            monthly_cost_mxn=round(monthly_cost_usd * usd_to_mxn, 2),
+            billing_day=max(1, min(28, billing_day)),
+            billing_cycle=billing_cycle,
+            auto_pay=auto_pay,
+            notes=notes.strip() or None,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        session.add(record)
+        await session.commit()
+    return RedirectResponse(url="/dashboard/billing", status_code=302)
+
+
+@router.post("/billing/{service_id}/delete")
+async def delete_service(request: Request, service_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        svc = (await session.execute(select(ServiceBilling).where(ServiceBilling.id == service_id))).scalar_one_or_none()
+        if svc:
+            await session.delete(svc)
+            await session.commit()
+    return RedirectResponse(url="/dashboard/billing", status_code=302)
+
+
 # ── ALERTS ────────────────────────────────────────────────────────────────────
 
 @router.get("/alerts", response_class=HTMLResponse)
@@ -1081,7 +1129,8 @@ async def availability_page(request: Request):
     except (ValueError, TypeError):
         week_offset = 0
 
-    today      = date.today()
+    from zoneinfo import ZoneInfo as _ZI
+    today      = datetime.now(_ZI("America/Mexico_City")).date()
     week_start = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
     week_end   = week_start + timedelta(days=6)
 

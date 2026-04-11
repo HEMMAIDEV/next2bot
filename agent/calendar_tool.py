@@ -72,32 +72,19 @@ def crear_evento(
         if necesidades:    description_lines.append(f"Necesidades: {necesidades}")
         if descripcion:    description_lines.append(f"Contexto: {descripcion}")
 
-        import uuid
         evento = {
             "summary":     titulo,
             "description": "\n".join(description_lines),
             "start": {"dateTime": inicio.isoformat(), "timeZone": TIMEZONE},
             "end":   {"dateTime": fin.isoformat(),    "timeZone": TIMEZONE},
-            "conferenceData": {
-                "createRequest": {
-                    "requestId": f"{telefono}-{fecha}-{hora}-{uuid.uuid4().hex[:8]}",
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                }
-            },
         }
 
         result   = service.events().insert(
-            calendarId=CALENDAR_ID, body=evento, conferenceDataVersion=1
+            calendarId=CALENDAR_ID, body=evento
         ).execute()
         event_id = result.get("id", "")
 
-        # Extract real Google Meet link from conferenceData
-        meet_link = ""
-        for ep in result.get("conferenceData", {}).get("entryPoints", []):
-            if ep.get("entryPointType") == "video":
-                meet_link = ep.get("uri", "")
-                break
-        link = meet_link or result.get("htmlLink", "")
+        link = result.get("htmlLink", "")
         logger.info(f"Evento creado: {titulo} el {fecha} a las {hora}")
 
         # Persist locally for dashboard calendar + reminder engine

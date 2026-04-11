@@ -138,6 +138,28 @@ DEFAULT_SERVICES = [
         "auto_pay": True,
         "notes": "Calendar + email integration.",
     },
+    {
+        "service_name": "claude_code_pro",
+        "display_name": "Claude Code Pro",
+        "plan_name": "Pro",
+        "monthly_cost_usd": 20.0,
+        "monthly_cost_mxn": 360.0,
+        "billing_day": 1,
+        "billing_cycle": "monthly",
+        "auto_pay": True,
+        "notes": "Anthropic Claude Code Pro subscription. Monthly AI development tool.",
+    },
+    {
+        "service_name": "chatgpt_plus",
+        "display_name": "ChatGPT Plus",
+        "plan_name": "Plus",
+        "monthly_cost_usd": 20.0,
+        "monthly_cost_mxn": 360.0,
+        "billing_day": 1,
+        "billing_cycle": "monthly",
+        "auto_pay": True,
+        "notes": "OpenAI ChatGPT Plus subscription. Monthly AI tool.",
+    },
 ]
 
 
@@ -151,20 +173,16 @@ async def seed_default_availability_rules() -> None:
 
 
 async def seed_default_billing() -> None:
-    """Seeds default service billing records if none exist."""
+    """Seeds default service billing records — inserts any missing services."""
     async with async_session() as session:
-        count = (await session.execute(
-            select(ServiceBilling)
-        )).scalars().first()
-
-        if count is not None:
-            return  # Already seeded
-
         for svc in DEFAULT_SERVICES:
-            record = ServiceBilling(**svc, created_at=datetime.utcnow(), updated_at=datetime.utcnow())
-            session.add(record)
+            existing = (await session.execute(
+                select(ServiceBilling).where(ServiceBilling.service_name == svc["service_name"])
+            )).scalar_one_or_none()
+            if existing is None:
+                record = ServiceBilling(**svc, created_at=datetime.utcnow(), updated_at=datetime.utcnow())
+                session.add(record)
         await session.commit()
-        logger.info("Seeded default service billing records")
 
 
 # ── BACKGROUND LOOP ───────────────────────────────────────────────────────────

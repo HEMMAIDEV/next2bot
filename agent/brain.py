@@ -280,6 +280,18 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                         f"Cierra con energía positiva y ofrécete si necesitan mover la cita."
                     )
                 else:
+                    # Fire-and-forget alert (non-blocking)
+                    import asyncio as _aio
+                    try:
+                        from agent.alerts import create_booking_failed_alert
+                        _aio.create_task(create_booking_failed_alert(
+                            phone=telefono,
+                            fecha=args.get("fecha", ""),
+                            hora=args.get("hora", ""),
+                            error_detail=str(error),
+                        ))
+                    except Exception:
+                        pass
                     tool_result = (
                         "No se pudo crear el evento automáticamente. "
                         "Instrucción: Discúlpate brevemente y dile que Horacio confirmará la cita "
@@ -289,7 +301,21 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             else:
                 tool_result = f"Herramienta '{fn_name}' no reconocida."
 
-            mensajes.append(choice.message)
+            mensajes.append({
+                "role": "assistant",
+                "content": choice.message.content,
+                "tool_calls": [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                        },
+                    }
+                    for tc in choice.message.tool_calls
+                ],
+            })
             mensajes.append({"role": "tool", "tool_call_id": tool_call.id, "content": tool_result})
 
             response2 = await client.chat.completions.create(

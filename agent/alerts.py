@@ -253,3 +253,23 @@ async def get_unread_count() -> int:
             select(func.count(Alert.id)).where(Alert.read == False)
         )).scalar() or 0
     return count
+
+
+async def create_booking_failed_alert(phone: str, fecha: str, hora: str, error_detail: str = "") -> None:
+    """
+    Creates a dashboard alert when the bot fails to book a meeting on Google Calendar.
+    Deduped to once per 2 hours per phone to avoid spam.
+    """
+    ref = f"booking_failed_{phone}_{fecha}_{hora}"
+    if await _alert_exists("booking_failed", ref, window_hours=2):
+        return
+    body = f"Bot failed to book a meeting for {phone} on {fecha} at {hora}."
+    if error_detail:
+        body += f" Error: {error_detail}"
+    body += " Check Google Calendar credentials and fix manually if needed."
+    await _create_alert(
+        "booking_failed", ref,
+        f"📅 Booking failed — {fecha} {hora}",
+        body,
+        severity="warning",
+    )

@@ -52,6 +52,10 @@ MIGRATIONS = [
      "service_billing.balance_usd"),
     ("ALTER TABLE service_billing ADD COLUMN balance_alert_threshold_usd REAL DEFAULT 5",
      "service_billing.balance_alert_threshold_usd"),
+
+    # ServiceBilling table — payment tracking dates
+    ("ALTER TABLE service_billing ADD COLUMN last_paid_at TIMESTAMP", "service_billing.last_paid_at"),
+    ("ALTER TABLE service_billing ADD COLUMN next_due_at TIMESTAMP", "service_billing.next_due_at"),
 ]
 
 

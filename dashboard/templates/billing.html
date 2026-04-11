@@ -30,6 +30,29 @@
   </div>
 </div>
 
+<!-- Revenue vs Expenses Bar -->
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-4 mb-6 flex items-center gap-6">
+  <div class="flex-1">
+    <div class="flex justify-between text-xs text-gray-500 mb-1">
+      <span>Total Monthly Costs (USD)</span>
+      <span class="text-white font-medium">${{ "%.2f"|format(total_cost_usd) }} USD</span>
+    </div>
+    <div class="h-2 bg-gray-800 rounded-full overflow-hidden">
+      {% set cost_pct = [(total_cost_usd / (mrr_mxn / 18.0) * 100) if mrr_mxn > 0 else 100, 100] | min %}
+      <div class="h-2 rounded-full {{ 'bg-red-500' if cost_pct > 80 else ('bg-yellow-500' if cost_pct > 50 else 'bg-emerald-500') }}"
+           style="width: {{ cost_pct }}%"></div>
+    </div>
+    <p class="text-xs text-gray-600 mt-1">
+      {% if mrr_mxn > 0 %}{{ "%.0f"|format(cost_pct) }}% of revenue ({{ "%.2f"|format(mrr_mxn / 18.0) }} USD MRR){% else %}No revenue yet{% endif %}
+    </p>
+  </div>
+  <div class="text-right shrink-0">
+    {% set net_usd = (mrr_mxn / 18.0) - total_cost_usd %}
+    <p class="text-lg font-bold {{ 'text-emerald-400' if net_usd >= 0 else 'text-red-400' }}">${{ "%.2f"|format(net_usd) }} USD</p>
+    <p class="text-xs text-gray-500">est. net margin / mo</p>
+  </div>
+</div>
+
 <div class="grid grid-cols-2 gap-6">
 
   <!-- LEFT: Upcoming Service Payments -->
@@ -110,6 +133,10 @@
                 <!-- Balance update toggle -->
                 <button onclick="document.getElementById('bal-{{ svc.id }}').classList.toggle('hidden')"
                   class="text-xs text-gray-600 hover:text-gray-400">Balance ↓</button>
+                <form method="POST" action="/dashboard/billing/{{ svc.id }}/delete"
+                  onsubmit="return confirm('Delete {{ svc.display_name }}?')">
+                  <button type="submit" class="text-xs text-red-600 hover:text-red-400">Delete</button>
+                </form>
               </div>
             </td>
           </tr>
@@ -135,6 +162,66 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Add Service Form -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <button onclick="document.getElementById('add-svc-form').classList.toggle('hidden')"
+        class="w-full px-5 py-3 text-left text-sm font-semibold text-gray-300 flex items-center gap-2 hover:bg-gray-800/40 transition">
+        <span class="text-blue-400 text-lg leading-none">+</span> Add Service
+      </button>
+      <div id="add-svc-form" class="hidden border-t border-gray-800 p-5">
+        <form method="POST" action="/dashboard/billing/add-service" class="space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Service ID (no spaces)</label>
+              <input name="service_name" required placeholder="e.g. slack_pro"
+                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Display Name</label>
+              <input name="display_name" required placeholder="e.g. Slack Pro"
+                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Plan</label>
+              <input name="plan_name" placeholder="Pro / Starter / etc."
+                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Monthly Cost (USD)</label>
+              <input name="monthly_cost_usd" type="number" step="0.01" min="0" value="0"
+                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Billing Day</label>
+              <input name="billing_day" type="number" min="1" max="28" value="1"
+                class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 block mb-1">Cycle</label>
+              <select name="billing_cycle" class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual</option>
+                <option value="usage">Usage</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Notes</label>
+            <input name="notes" placeholder="Optional note"
+              class="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" name="auto_pay" value="true" id="auto_pay_chk" class="rounded">
+            <label for="auto_pay_chk" class="text-xs text-gray-400">Auto-pay (card on file)</label>
+          </div>
+          <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium py-2 rounded transition">
+            Add Service
+          </button>
+        </form>
+      </div>
+    </div>
+
   </div>
 
   <!-- RIGHT: Client Payment Calendar + Bot Intelligence -->
