@@ -372,10 +372,32 @@ async def monitor(request: Request):
             select(UsageLog).where(UsageLog.success == False).order_by(desc(UsageLog.created_at)).limit(10)
         )).scalars().all()
 
-        # Hourly chart (today)
+        from zoneinfo import ZoneInfo as _ZI
+        from datetime import timezone as _utctz
+        _MX = _ZI("America/Mexico_City")
+
+        recent_errors_data = []
+        for e in recent_errors:
+            local_dt = e.created_at.replace(tzinfo=_utctz.utc).astimezone(_MX)
+            recent_errors_data.append({
+                "time": local_dt.strftime("%b %d %H:%M"),
+                "provider": e.provider or "—",
+                "event_type": e.event_type or "—",
+                "phone": e.phone or "—",
+                "error": e.error_message or "Unknown error",
+                "latency_ms": e.latency_ms or 0,
+            })
+
+        # Hourly chart (today — Mexico City time)
+        from zoneinfo import ZoneInfo as _ZI2
+        _MX2 = _ZI2("America/Mexico_City")
+        _now_mx = datetime.now(_MX2)
+        today_mx = _now_mx.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_mx_utc = today_mx.astimezone(_utctz.utc).replace(tzinfo=None)
+
         hourly_chart = []
         for h in range(24):
-            h_start = today + timedelta(hours=h)
+            h_start = today_mx_utc + timedelta(hours=h)
             h_end   = h_start + timedelta(hours=1)
             count = (await session.execute(
                 select(func.count()).where(
@@ -414,7 +436,8 @@ async def monitor(request: Request):
         "tokens_in_today": tokens_in_today, "tokens_out_today": tokens_out_today,
         "cost_today": round(cost_today, 4), "cost_week": round(cost_week, 4), "cost_month": round(cost_month, 4),
         "errors_today": errors_today, "avg_latency_ms": int(avg_lat or 0),
-        "recent_errors": recent_errors,
+        "recent_errors": recent_errors_data,
+        "today_label": _now_mx.strftime("%A, %B %d — Mexico City"),
         "hourly_chart": hourly_chart,
         "daily_chart": daily_chart,
         "cost_breakdown": cost_breakdown,
@@ -845,6 +868,20 @@ async def client_partner_payment(
     return RedirectResponse(url=f"/dashboard/clients/{client_id}", status_code=302)
 
 
+@router.post("/clients/{client_id}/delete")
+async def client_delete(request: Request, client_id: int):
+    if not _check_auth(request):
+        return _redirect_login()
+    async with async_session() as session:
+        client = (await session.execute(
+            select(Client).where(Client.id == client_id)
+        )).scalar_one_or_none()
+        if client:
+            await session.delete(client)
+            await session.commit()
+    return RedirectResponse(url="/dashboard/clients", status_code=302)
+
+
 # ── BILLING & PAYMENTS ────────────────────────────────────────────────────────
 
 @router.get("/billing", response_class=HTMLResponse)
@@ -909,6 +946,24 @@ async def billing(request: Request):
             select(func.count(LearnedPattern.id)).where(LearnedPattern.active == True)
         )).scalar() or 0
 
+    from zoneinfo import ZoneInfo as _ZI
+    from datetime import timezone as _utctz
+    _MX = _ZI("America/Mexico_City")
+    partner_costs_mxn = sum(
+        getattr(c, "partner_monthly_cost_mxn", 0) or 0
+        for c in clients if getattr(c, "is_partner_bot", False)
+    )
+    services_meta = {}
+    for s in services:
+        due_days = (s.next_due_at - now).days if s.next_due_at else None
+        due_local = (
+            s.next_due_at.replace(tzinfo=_utctz.utc).astimezone(_MX).strftime("%b %d")
+            if s.next_due_at else "—"
+        )
+        services_meta[s.id] = {"due_days": due_days, "due_local": due_local}
+
+    alert_badge = await _alert_badge()
+
     return templates.TemplateResponse(request=request, name="billing.html", context={
         "active_page": "billing",
         "services": services,
@@ -922,6 +977,9 @@ async def billing(request: Request):
         "upcoming_payments": upcoming,
         "client_payments": client_payments,
         "patterns_count": patterns_count,
+        "partner_costs_mxn": partner_costs_mxn,
+        "services_meta": services_meta,
+        "alert_badge": alert_badge,
     })
 
 

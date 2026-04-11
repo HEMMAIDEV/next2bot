@@ -26,6 +26,7 @@ async def generate_all_alerts() -> int:
     created += await _check_payment_alerts()
     created += await _check_api_balance_alerts()
     created += await _check_partner_payment_alerts()
+    created += await _check_upcoming_service_payments()
     if created:
         logger.info(f"Alerts generated: {created} new alerts")
     return created
@@ -240,6 +241,40 @@ async def _check_partner_payment_alerts() -> int:
                     severity="info",
                 )
                 created += 1
+
+    return created
+
+
+# ── UPCOMING SERVICE PAYMENT ALERTS ──────────────────────────────────────────
+
+async def _check_upcoming_service_payments() -> int:
+    """Alert when a tracked service payment is due within 7 days."""
+    created = 0
+    now = datetime.utcnow()
+    in_7_days = now + timedelta(days=7)
+
+    async with async_session() as session:
+        services = (await session.execute(select(ServiceBilling))).scalars().all()
+
+        for svc in services:
+            if not svc.next_due_at:
+                continue
+            if svc.auto_pay:
+                continue  # auto-pay services don't need manual attention
+            days_until = (svc.next_due_at - now).days
+            if 0 <= days_until <= 7:
+                ref = f"service_{svc.id}_upcoming_{svc.next_due_at.strftime('%Y%m%d')}"
+                if not await _alert_exists("service_payment_upcoming", ref, window_hours=24):
+                    severity = "error" if days_until <= 1 else ("warning" if days_until <= 3 else "info")
+                    await _create_alert(
+                        "service_payment_upcoming", ref,
+                        f"💳 {svc.display_name} payment due in {days_until}d",
+                        f"{svc.display_name} ({svc.plan_name or svc.billing_cycle}) is due on "
+                        f"{svc.next_due_at.strftime('%b %d')} — ${svc.monthly_cost_usd:.2f} USD. "
+                        f"{'Mark as paid in the billing dashboard.' if not svc.auto_pay else 'Auto-pay configured.'}",
+                        severity=severity,
+                    )
+                    created += 1
 
     return created
 

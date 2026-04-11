@@ -93,7 +93,13 @@
         <td class="px-4 py-3 text-right text-gray-400">${{ "%.4f"|format(usage_map[client.id].cost) }}</td>
         <!-- Actions -->
         <td class="px-4 py-3 text-center">
-          <a href="/dashboard/clients/{{ client.id }}" class="text-blue-400 hover:text-blue-300 text-xs font-medium">View →</a>
+          <div class="flex items-center justify-center gap-3">
+            <a href="/dashboard/clients/{{ client.id }}" class="text-blue-400 hover:text-blue-300 text-xs font-medium">View →</a>
+            <form method="POST" action="/dashboard/clients/{{ client.id }}/delete"
+              onsubmit="return confirm('Delete {{ client.name }}? This cannot be undone.')">
+              <button type="submit" class="text-xs text-red-600 hover:text-red-400 font-medium">Delete</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% else %}

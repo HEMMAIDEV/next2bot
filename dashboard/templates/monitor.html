@@ -2,6 +2,8 @@
 {% block title %}Monitor{% endblock %}
 {% block content %}
 
+<p class="text-xs text-gray-600 mb-4">All times: Mexico City (America/Mexico_City) · {{ today_label }}</p>
+
 <!-- Top stats -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
@@ -65,20 +67,29 @@
 
 <!-- Recent errors -->
 {% if recent_errors %}
-<div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-  <h3 class="font-semibold text-white mb-4">Recent Errors</h3>
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-6">
+  <h3 class="font-semibold text-white mb-4">Recent Errors <span class="text-xs text-gray-500 font-normal">(last 10, Mexico City time)</span></h3>
   <div class="space-y-2">
     {% for err in recent_errors %}
-    <div class="bg-red-950/30 border border-red-900/40 rounded-lg px-4 py-2 text-xs flex items-start gap-3">
-      <span class="text-gray-500 whitespace-nowrap">{{ err.created_at.strftime('%b %d %H:%M') }}</span>
-      <span class="text-red-400 font-medium">{{ err.provider }}</span>
-      <span class="text-gray-300">{{ err.error_message or 'Unknown error' }}</span>
+    <div class="bg-red-950/30 border border-red-900/40 rounded-lg px-4 py-3">
+      <div class="flex items-start justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-xs text-gray-400 whitespace-nowrap font-mono">{{ err.time }}</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-red-900/50 text-red-300 font-medium">{{ err.provider }}</span>
+          <span class="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">{{ err.event_type }}</span>
+          {% if err.phone != "—" %}
+          <span class="text-xs text-gray-500">📱 {{ err.phone }}</span>
+          {% endif %}
+        </div>
+        <span class="text-xs text-gray-600">{{ err.latency_ms }}ms</span>
+      </div>
+      <p class="text-xs text-red-300 mt-2 font-mono break-all">{{ err.error }}</p>
     </div>
     {% endfor %}
   </div>
 </div>
 {% else %}
-<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center">
+<div class="bg-gray-900 rounded-xl border border-gray-800 p-5 text-center mb-6">
   <p class="text-emerald-400 font-semibold">✓ No errors recorded</p>
   <p class="text-gray-500 text-sm mt-1">System running clean</p>
 </div>
