@@ -489,6 +489,25 @@ async def services(request: Request):
         avg_lat = (await session.execute(
             select(func.avg(UsageLog.latency_ms)).where(UsageLog.provider == "openai", UsageLog.success == True, UsageLog.created_at >= today)
         )).scalar()
+        # Fetch actual error details for the log
+        from zoneinfo import ZoneInfo as _ZI_svc
+        from datetime import timezone as _utctz_svc
+        _MX_svc = _ZI_svc("America/Mexico_City")
+        openai_error_logs = (await session.execute(
+            select(UsageLog)
+            .where(UsageLog.provider == "openai", UsageLog.success == False, UsageLog.created_at >= today)
+            .order_by(desc(UsageLog.created_at))
+            .limit(10)
+        )).scalars().all()
+        openai_errors_data = [
+            {
+                "time": e.created_at.replace(tzinfo=_utctz_svc.utc).astimezone(_MX_svc).strftime("%H:%M:%S"),
+                "type": e.event_type or "chat",
+                "phone": e.phone or "—",
+                "msg": e.error_message or "Unknown error",
+            }
+            for e in openai_error_logs
+        ]
 
     services_data.append({
         "name": "OpenAI",
@@ -503,6 +522,7 @@ async def services(request: Request):
             "Pricing": "$0.15/1M in · $0.60/1M out",
         },
         "note": "Balance not available via API — shown from tracked usage logs.",
+        "error_logs": openai_errors_data,
     })
 
     # 3. Whapi.cloud

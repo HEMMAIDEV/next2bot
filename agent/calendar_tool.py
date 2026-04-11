@@ -292,7 +292,7 @@ def build_week_grid(
     }
     """
     tz         = ZoneInfo(tz_name)
-    today      = date.today()
+    today      = datetime.now(tz).date()   # use configured tz, not UTC server date
     rule_map   = {r.day_of_week: r for r in rules}
     DAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
 
