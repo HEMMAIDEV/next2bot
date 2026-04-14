@@ -269,13 +269,19 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                     if nombre_str: client_info += f" | Cliente: {nombre_str}"
                     if nicho_str:  client_info += f" | Nicho: {nicho_str}"
                     if needs_str:  client_info += f" | Necesidades: {needs_str}"
+                    link_instruction = (
+                        f"IMPORTANTE: Incluye este enlace exacto en tu respuesta de WhatsApp, tal cual, sin modificarlo ni reemplazarlo por un placeholder: {link}"
+                        if link else
+                        "No hay enlace de calendario disponible en este momento — no menciones ningún enlace."
+                    )
                     tool_result = (
                         f"Evento creado exitosamente.\n"
                         f"Título: {args.get('titulo')} | Fecha: {args['fecha']} | Hora: {args['hora']}"
                         f"{client_info}\n"
-                        f"Link: {link}\n"
+                        f"Link del evento: {link}\n"
                         f"Sincronización: {sync_status}\n\n"
                         f"Instrucción: Confirma la cita con entusiasmo. Menciona la fecha y hora exactas. "
+                        f"{link_instruction} "
                         f"Dile que Horacio llegará preparado con ideas para su caso específico. "
                         f"Cierra con energía positiva y ofrécete si necesitan mover la cita."
                     )
