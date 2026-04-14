@@ -9,7 +9,6 @@ logger = logging.getLogger("agentkit")
 
 SCOPES      = [
     "https://www.googleapis.com/auth/calendar",
-    "https://www.googleapis.com/auth/meetings.space.created",
 ]
 TIMEZONE    = "America/Mexico_City"
 CALENDAR_ID = (
@@ -37,33 +36,6 @@ def _get_service():
     except Exception as e:
         logger.error(f"Error autenticando Google Calendar: {e}")
         return None
-
-
-def _create_meet_space() -> str:
-    """
-    Creates a Google Meet space via the Meet REST API v2.
-    Returns the meetingUri string, or empty string on failure.
-    Service accounts with meetings.space.created scope can call this directly.
-    """
-    creds_json = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
-    if not creds_json:
-        return ""
-    try:
-        from google.oauth2 import service_account
-        from googleapiclient.discovery import build
-        creds = service_account.Credentials.from_service_account_info(
-            json.loads(creds_json),
-            scopes=["https://www.googleapis.com/auth/meetings.space.created"],
-        )
-        meet_service = build("meet", "v2", credentials=creds)
-        space = meet_service.spaces().create(body={}).execute()
-        link = space.get("meetingUri", "")
-        if link:
-            logger.info(f"Google Meet space created: {link}")
-        return link
-    except Exception as e:
-        logger.warning(f"Meet API v2 unavailable, no Meet link: {e}")
-        return ""
 
 
 # ── CREATE EVENT ─────────────────────────────────────────────────────────────
@@ -102,22 +74,35 @@ def crear_evento(
         if necesidades:    description_lines.append(f"Necesidades: {necesidades}")
         if descripcion:    description_lines.append(f"Contexto: {descripcion}")
 
-        # Try to create a Google Meet link via Meet API v2
-        meet_link = _create_meet_space()
-        if meet_link:
-            description_lines.append(f"Google Meet: {meet_link}")
-
+        import uuid
         evento = {
             "summary":     titulo,
             "description": "\n".join(description_lines),
             "start": {"dateTime": inicio.isoformat(), "timeZone": TIMEZONE},
             "end":   {"dateTime": fin.isoformat(),    "timeZone": TIMEZONE},
+            "conferenceData": {
+                "createRequest": {
+                    "requestId": str(uuid.uuid4()),
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            },
         }
 
         result   = service.events().insert(
-            calendarId=CALENDAR_ID, body=evento
+            calendarId=CALENDAR_ID, body=evento, conferenceDataVersion=1
         ).execute()
         event_id = result.get("id", "")
+
+        # Extract Meet link from conference data; fall back to calendar event URL
+        meet_link = ""
+        for ep in result.get("conferenceData", {}).get("entryPoints", []):
+            if ep.get("entryPointType") == "video":
+                meet_link = ep.get("uri", "")
+                break
+        if meet_link:
+            logger.info(f"Google Meet link from Calendar: {meet_link}")
+        else:
+            logger.info("No Meet link in conferenceData — using calendar htmlLink")
 
         link = meet_link or result.get("htmlLink", "")
         logger.info(f"Evento creado: {titulo} el {fecha} a las {hora}")
