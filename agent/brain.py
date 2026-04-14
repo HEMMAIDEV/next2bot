@@ -269,18 +269,27 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                     if nombre_str: client_info += f" | Cliente: {nombre_str}"
                     if nicho_str:  client_info += f" | Nicho: {nicho_str}"
                     if needs_str:  client_info += f" | Necesidades: {needs_str}"
+                    # Compute correct day name from date — never let the model guess this
+                    from datetime import date as _date
+                    from agent.availability import DAYS_ES
+                    fecha_obj = _date.fromisoformat(args["fecha"])
+                    dia_semana = DAYS_ES[fecha_obj.weekday()]
+                    fecha_display = f"{dia_semana} {fecha_obj.strftime('%d/%m/%Y')}"
                     link_instruction = (
-                        f"IMPORTANTE: Incluye este enlace exacto en tu respuesta de WhatsApp, tal cual, sin modificarlo ni reemplazarlo por un placeholder: {link}"
+                        f"IMPORTANTE: Incluye este enlace exacto en tu respuesta de WhatsApp, "
+                        f"cópialo tal cual sin modificarlo: {link}"
                         if link else
                         "No hay enlace de calendario disponible en este momento — no menciones ningún enlace."
                     )
                     tool_result = (
                         f"Evento creado exitosamente.\n"
-                        f"Título: {args.get('titulo')} | Fecha: {args['fecha']} | Hora: {args['hora']}"
+                        f"Título: {args.get('titulo')} | "
+                        f"Día: {fecha_display} | Hora: {args['hora']} hrs"
                         f"{client_info}\n"
                         f"Link del evento: {link}\n"
                         f"Sincronización: {sync_status}\n\n"
-                        f"Instrucción: Confirma la cita con entusiasmo. Menciona la fecha y hora exactas. "
+                        f"Instrucción: Confirma la cita con entusiasmo. "
+                        f"Menciona exactamente: '{fecha_display} a las {args['hora']} hrs' — usa estos valores, no los recalcules. "
                         f"{link_instruction} "
                         f"Dile que Horacio llegará preparado con ideas para su caso específico. "
                         f"Cierra con energía positiva y ofrécete si necesitan mover la cita."
