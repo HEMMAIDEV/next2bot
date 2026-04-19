@@ -124,13 +124,22 @@ async def webhook_handler(request: Request):
             # CRM: auto-enrich lead with name/company/need (runs async, non-blocking)
             asyncio.create_task(_enrich_lead_async(msg.telefono, full_history))
 
-            await proveedor.enviar_mensaje(msg.telefono, respuesta)
+            await _enviar_respuesta(proveedor, msg.telefono, respuesta)
             logger.info(f"Reply to {msg.telefono}: {respuesta[:80]}")
 
         return {"status": "ok"}
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _enviar_respuesta(proveedor_instance, telefono: str, respuesta: str) -> None:
+    """Split response on ||| and send each part as a separate WhatsApp message."""
+    partes = [p.strip() for p in respuesta.split("|||") if p.strip()]
+    for i, parte in enumerate(partes):
+        await proveedor_instance.enviar_mensaje(telefono, parte)
+        if i < len(partes) - 1:
+            await asyncio.sleep(1.2)
 
 
 async def _enrich_lead_async(phone: str, historial: list[dict]) -> None:
@@ -158,7 +167,7 @@ async def _process_messages(mensajes, proveedor_instance):
         full_history = await obtener_historial(msg.telefono)
         await score_lead(msg.telefono, full_history)
         asyncio.create_task(_enrich_lead_async(msg.telefono, full_history))
-        await proveedor_instance.enviar_mensaje(msg.telefono, respuesta)
+        await _enviar_respuesta(proveedor_instance, msg.telefono, respuesta)
         logger.info(f"Reply to {msg.telefono}: {respuesta[:80]}")
 
 

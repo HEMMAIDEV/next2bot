@@ -324,6 +324,51 @@ async def summarize_lead(request: Request, phone: str):
     return RedirectResponse(url=f"/dashboard/leads/{phone.replace('@', '-')}", status_code=302)
 
 
+@router.post("/leads/{phone}/clear-conversation")
+async def clear_conversation(request: Request, phone: str):
+    if not _check_auth(request):
+        return _redirect_login()
+    phone = phone.replace("-", "@")
+    from agent.memory import limpiar_historial
+    await limpiar_historial(phone)
+    return RedirectResponse(url=f"/dashboard/leads/{phone.replace('@', '-')}", status_code=302)
+
+
+@router.post("/leads/{phone}/delete")
+async def delete_lead(request: Request, phone: str):
+    if not _check_auth(request):
+        return _redirect_login()
+    phone = phone.replace("-", "@")
+    async with async_session() as session:
+        # Delete messages
+        msgs = (await session.execute(select(Message).where(Message.phone == phone))).scalars().all()
+        for m in msgs:
+            await session.delete(m)
+        # Delete funnel events
+        evts = (await session.execute(select(FunnelEvent).where(FunnelEvent.phone == phone))).scalars().all()
+        for e in evts:
+            await session.delete(e)
+        # Delete lead record
+        lead = (await session.execute(select(Lead).where(Lead.phone == phone))).scalar_one_or_none()
+        if lead:
+            await session.delete(lead)
+        await session.commit()
+    return RedirectResponse(url="/dashboard/leads", status_code=302)
+
+
+@router.post("/leads/{phone}/toggle-test")
+async def toggle_test_mode(request: Request, phone: str):
+    if not _check_auth(request):
+        return _redirect_login()
+    phone = phone.replace("-", "@")
+    async with async_session() as session:
+        lead = (await session.execute(select(Lead).where(Lead.phone == phone))).scalar_one_or_none()
+        if lead:
+            lead.is_test = not getattr(lead, "is_test", False)
+            await session.commit()
+    return RedirectResponse(url=f"/dashboard/leads/{phone.replace('@', '-')}", status_code=302)
+
+
 # ── MONITOR ───────────────────────────────────────────────────
 
 @router.get("/monitor", response_class=HTMLResponse)

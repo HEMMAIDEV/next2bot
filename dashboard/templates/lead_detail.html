@@ -2,8 +2,11 @@
 {% block title %}Lead — {{ lead.phone }}{% endblock %}
 {% block content %}
 
-<div class="mb-4">
+<div class="mb-4 flex items-center justify-between">
   <a href="/dashboard/leads" class="text-gray-400 hover:text-white text-sm">← Back to Leads</a>
+  {% if lead.is_test %}
+  <span class="text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/40 px-3 py-1 rounded-full font-mono">🧪 Test Number</span>
+  {% endif %}
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -134,12 +137,48 @@
     </div>
     {% endif %}
 
+    <!-- Danger Zone -->
+    <div class="bg-gray-900 rounded-xl border border-red-900/40 p-5 space-y-3">
+      <h3 class="font-semibold text-red-400 text-sm uppercase tracking-wide">Danger Zone</h3>
+
+      <!-- Toggle test mode -->
+      <form method="POST" action="/dashboard/leads/{{ lead.phone.replace('@', '-') }}/toggle-test">
+        <button type="submit"
+          class="w-full text-sm py-2 rounded-lg font-medium border
+            {% if lead.is_test %}bg-yellow-500/10 text-yellow-400 border-yellow-500/40 hover:bg-yellow-500/20
+            {% else %}bg-gray-800 text-gray-300 border-gray-700 hover:border-yellow-500/40 hover:text-yellow-400{% endif %}">
+          {% if lead.is_test %}🧪 Desmarcar como número de prueba{% else %}🧪 Marcar como número de prueba{% endif %}
+        </button>
+      </form>
+
+      <!-- Delete lead entirely -->
+      <form method="POST" action="/dashboard/leads/{{ lead.phone.replace('@', '-') }}/delete"
+            onsubmit="return confirm('¿Seguro? Esto borra el lead y toda su conversación permanentemente.')">
+        <button type="submit"
+          class="w-full text-sm py-2 rounded-lg font-medium bg-red-900/20 text-red-400 border border-red-800/50 hover:bg-red-900/40">
+          🗑 Eliminar lead completo
+        </button>
+      </form>
+    </div>
+
   </div>
 
   <!-- Right: Conversation -->
   <div class="lg:col-span-2">
     <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <h3 class="font-semibold text-white mb-4">Conversation ({{ messages|length }} messages)</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-semibold text-white">
+          Conversation ({{ messages|length }} messages)
+          {% if lead.is_test %}<span class="ml-2 text-xs text-yellow-400">🧪 test</span>{% endif %}
+        </h3>
+        <form method="POST" action="/dashboard/leads/{{ lead.phone.replace('@', '-') }}/clear-conversation"
+              onsubmit="return confirm('¿Borrar toda la conversación? El lead se mantiene.')">
+          <button type="submit"
+            class="text-xs bg-gray-800 hover:bg-red-900/30 text-gray-400 hover:text-red-400 border border-gray-700 hover:border-red-800/50 px-3 py-1.5 rounded-lg transition-colors">
+            🗑 Limpiar conversación
+          </button>
+        </form>
+      </div>
       <div class="space-y-3 max-h-[70vh] overflow-y-auto pr-2">
         {% for msg in messages %}
         <div class="flex {% if msg.role == 'assistant' %}justify-start{% else %}justify-end{% endif %}">

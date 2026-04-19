@@ -32,6 +32,7 @@ class Lead(Base):
     notes:         Mapped[str | None]     = mapped_column(Text)
     ai_summary:    Mapped[str | None]     = mapped_column(Text)
     next_action:   Mapped[str | None]     = mapped_column(Text)
+    is_test:       Mapped[bool]           = mapped_column(Boolean, default=False)
     last_seen_at:  Mapped[datetime | None]= mapped_column(DateTime)
     created_at:    Mapped[datetime]       = mapped_column(DateTime, default=datetime.utcnow)
     updated_at:    Mapped[datetime]       = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

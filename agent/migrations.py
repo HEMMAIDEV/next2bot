@@ -56,6 +56,9 @@ MIGRATIONS = [
     # ServiceBilling table — payment tracking dates
     ("ALTER TABLE service_billing ADD COLUMN last_paid_at TIMESTAMP", "service_billing.last_paid_at"),
     ("ALTER TABLE service_billing ADD COLUMN next_due_at TIMESTAMP", "service_billing.next_due_at"),
+
+    # Leads table — test mode flag (marks a lead as a testing number)
+    ("ALTER TABLE leads ADD COLUMN is_test BOOLEAN DEFAULT FALSE", "leads.is_test"),
 ]
 
 

@@ -181,8 +181,8 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             messages=mensajes,
             tools=OPENAI_TOOLS,
             tool_choice="auto",
-            max_tokens=1024,
-            temperature=0.85,  # slightly higher for more natural, less robotic responses
+            max_tokens=400,
+            temperature=0.88,
         )
         latency = int((time.time() - start) * 1000)
         choice = response.choices[0]
@@ -336,8 +336,8 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             response2 = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=mensajes,
-                max_tokens=512,
-                temperature=0.85,
+                max_tokens=350,
+                temperature=0.88,
             )
             await log_usage("openai", "chat_tool_followup",
                             response2.usage.prompt_tokens, response2.usage.completion_tokens,
