@@ -181,7 +181,7 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             messages=mensajes,
             tools=OPENAI_TOOLS,
             tool_choice="auto",
-            max_tokens=280,
+            max_tokens=120,
             temperature=0.9,
         )
         latency = int((time.time() - start) * 1000)
@@ -341,7 +341,7 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             response2 = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=mensajes,
-                max_tokens=250,
+                max_tokens=150,
                 temperature=0.9,
             )
             await log_usage("openai", "chat_tool_followup",
