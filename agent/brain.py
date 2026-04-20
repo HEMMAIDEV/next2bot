@@ -221,13 +221,17 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                         else:
                             summary = f"El {day_label} {target.strftime('%d/%m/%Y')} [{target.isoformat()}] no hay horarios disponibles."
                     else:
-                        summary = await get_availability_summary_for_bot(days_ahead=7)
+                        summary = await get_availability_summary_for_bot(days_ahead=5)
                     tool_result = (
                         f"{summary}\n\n"
-                        f"Instrucción: Comparte estos horarios con el prospecto de forma natural. "
+                        f"Instrucción: Presenta estos horarios de forma corta y conversacional — como lo haría una persona real por WhatsApp. "
+                        f"NO uses markdown (no asteriscos, no guiones, no negrita). "
+                        f"Muestra máximo los primeros 3 días disponibles. "
+                        f"Por cada día, menciona solo 3-4 opciones de horario representativas (no las listes todas). "
+                        f"Ejemplo de formato ideal: 'El lunes puedo a las 17, 18 o 19hrs. El martes igual. ¿Cuál te queda mejor?' "
                         f"IMPORTANTE: Usa los días y fechas EXACTAMENTE como aparecen arriba — no recalcules ni cambies ninguna fecha. "
                         f"Cada línea tiene el formato 'Día DD/MM/YYYY [YYYY-MM-DD]' — usa ese día y esa fecha tal cual. "
-                        f"Pregúntale cuál le viene mejor. Cuando elija, llama a agendar_cita usando la fecha ISO [YYYY-MM-DD] correspondiente."
+                        f"Cuando el prospecto elija, llama a agendar_cita usando la fecha ISO [YYYY-MM-DD] correspondiente."
                     )
                 except Exception as e:
                     logger.error(f"verificar_disponibilidad error: {e}")
