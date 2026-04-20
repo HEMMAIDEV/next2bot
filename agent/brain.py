@@ -181,8 +181,8 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             messages=mensajes,
             tools=OPENAI_TOOLS,
             tool_choice="auto",
-            max_tokens=400,
-            temperature=0.88,
+            max_tokens=280,
+            temperature=0.9,
         )
         latency = int((time.time() - start) * 1000)
         choice = response.choices[0]
@@ -288,15 +288,16 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
                     tool_result = (
                         f"Evento creado exitosamente.\n"
                         f"Título: {args.get('titulo')} | "
-                        f"Día: {fecha_display} | Hora: {args['hora']} hrs"
+                        f"Día: {fecha_display} | Hora: {args['hora']} hrs (15 minutos)"
                         f"{client_info}\n"
                         f"Link del evento: {link}\n"
                         f"Sincronización: {sync_status}\n\n"
-                        f"Instrucción: Confirma la cita con entusiasmo. "
+                        f"Instrucción: Confirma la cita con una respuesta corta y humana (máx 3 oraciones). "
                         f"Menciona exactamente: '{fecha_display} a las {args['hora']} hrs' — usa estos valores, no los recalcules. "
+                        f"Di que son 15 minutos rápidos. "
                         f"{link_instruction} "
-                        f"Dile que Horacio llegará preparado con ideas para su caso específico. "
-                        f"Cierra con energía positiva y ofrécete si necesitan mover la cita."
+                        f"Cierra diciendo que Horacio le va a escribir para confirmar. "
+                        f"USA ||| para separar en 2 mensajes si hace sentido naturalmente."
                     )
                 else:
                     # Fire-and-forget alert (non-blocking)
@@ -340,8 +341,8 @@ async def generar_respuesta(mensaje: str, historial: list[dict], telefono: str =
             response2 = await client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=mensajes,
-                max_tokens=350,
-                temperature=0.88,
+                max_tokens=250,
+                temperature=0.9,
             )
             await log_usage("openai", "chat_tool_followup",
                             response2.usage.prompt_tokens, response2.usage.completion_tokens,

@@ -88,7 +88,7 @@ def _time_from_str(s: str) -> time:
 def compute_free_slots(
     rule: AvailabilityRule,
     booked_periods: list[tuple[time, time]],
-    slot_minutes: int = 60,
+    slot_minutes: int = 15,
 ) -> list[str]:
     """
     Given an availability rule and a list of (start, end) booked time tuples,
@@ -159,7 +159,7 @@ async def get_db_blocked_periods_for_date(target_date: date) -> list[tuple[time,
 async def get_free_slots_for_date(
     target_date: date,
     booked_periods: list[tuple[time, time]],
-    slot_minutes: int = 60,
+    slot_minutes: int = 15,
 ) -> list[str]:
     """Returns free slot strings for a specific date, given GCal booked periods.
     Also subtracts custom blocked times from the DB."""
@@ -174,7 +174,7 @@ async def get_free_slots_for_date(
 
 async def get_availability_summary_for_bot(
     days_ahead: int = 7,
-    slot_minutes: int = 60,
+    slot_minutes: int = 15,
 ) -> str:
     """
     Returns a human-readable (Spanish) summary of available slots for the

@@ -46,13 +46,13 @@ def crear_evento(
     hora: str,
     descripcion: str = "",
     telefono: str   = "",
-    duracion_min: int = 60,
+    duracion_min: int = 15,
     nombre_cliente: str = "",
     nicho: str          = "",
     necesidades: str    = "",
 ) -> dict:
     """
-    Crea un evento de 60 min en Google Calendar y guarda en BookedMeeting.
+    Crea un evento de 15 min en Google Calendar y guarda en BookedMeeting.
     Retorna dict: {"link": str, "event_id": str, "error": str|None}
     """
     service = _get_service()
@@ -229,7 +229,7 @@ def get_booked_periods_for_date(target_date: date) -> list[tuple[time, time]]:
 
 # ── SLOT AVAILABILITY CHECK ───────────────────────────────────────────────────
 
-def check_slot_available(fecha: str, hora: str, slot_minutes: int = 60) -> bool:
+def check_slot_available(fecha: str, hora: str, slot_minutes: int = 15) -> bool:
     """Returns True if the given slot is free on Google Calendar."""
     try:
         target_date = date.fromisoformat(fecha)
